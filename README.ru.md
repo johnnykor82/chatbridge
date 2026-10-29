@@ -38,7 +38,7 @@ ChatBridge — самостоятельный неофициальный шлю�
 
 ## Установка на macOS
 
-Понадобятся macOS, Google Chrome, Git и Python 3. Если [uv](https://docs.astral.sh/uv/) отсутствует, установщик сам предложит установить его через Homebrew или официальный установщик uv (если Homebrew нет). После согласия пользователя установка ChatBridge продолжится и будет создано изолированное окружение Python 3.13.
+Понадобятся macOS, Google Chrome, Git и Python 3. Если [uv](https://docs.astral.sh/uv/) отсутствует, установщик сам предложит установить его через официальный standalone-установщик uv, даже если Homebrew установлен. uv устанавливается в `~/.local/bin` без изменения настроек shell. После согласия пользователя установка ChatBridge продолжится и будет создано изолированное окружение Python 3.13.
 
 ```bash
 git clone https://github.com/johnnykor82/chatbridge.git

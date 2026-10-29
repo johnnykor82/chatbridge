@@ -17,7 +17,9 @@ ChatBridge is a standalone macOS HTTP gateway for a user-authorized ChatGPT web 
 
 **Requirements:** macOS, Chrome, Git, Python 3, uv, and a valid ChatGPT login. This is unofficial tooling, not an OpenAI API implementation; web UI and account limits may change behavior.
 
-**Beta 5:** first-run instructions explain how to open the managed Chrome profile for ChatGPT login. The installer and doctor display the correct command for the installed profile. Keyless local access remains the default.
+**Beta 6:** when uv is missing, the installer offers Astral's official standalone installer instead of building Homebrew dependencies. First-run instructions explain how to open the managed Chrome profile for ChatGPT login. Keyless local access remains the default.
+
+**uv bootstrap update:** when uv is missing, installation offers the official standalone installer with explicit consent, even if Homebrew is present. Prebuilt uv binaries go to `~/.local/bin`; shell configuration is preserved. Declining, noninteractive input and download failures provide manual installation guidance. Existing uv installations are reused.
 
 **Beta limitations:** clean-Mac installation and login, cold-reboot acceptance, long-running tool flows and source-provenance review remain unverified. This release is experimental, not production-ready.
 
@@ -38,7 +40,9 @@ ChatBridge — самостоятельный HTTP-сервис для прил�
 
 **Требования:** macOS, Chrome, Git, Python 3, uv и авторизация ChatGPT. Это неофициальный проект, не реализация OpenAI API; изменения сайта и ограничения аккаунта могут влиять на работу.
 
-**Beta 5:** инструкция первого запуска объясняет, как открыть управляемый Chrome-профиль и войти в ChatGPT. Установщик и doctor выводят команду для установленного профиля. Локальный доступ по умолчанию работает без ключа.
+**Beta 6:** если uv отсутствует, установщик предлагает официальный standalone-установщик Astral без сборки зависимостей Homebrew. Инструкция объясняет, как открыть управляемый Chrome-профиль и войти в ChatGPT. Локальный доступ по умолчанию работает без ключа.
+
+**Обновление установки uv:** если uv отсутствует, предлагается официальный standalone-установщик с явным согласием, даже при наличии Homebrew. Готовые бинарные файлы uv помещаются в `~/.local/bin`, настройки shell сохраняются. При отказе, неинтерактивном запуске или ошибке загрузки выводится инструкция ручной установки. Уже установленный uv используется повторно.
 
 **Ограничения Beta:** ещё нужны тест чистой установки и входа на другом Mac, проверка после перезагрузки, длительных сценариев и аудит публичных исходников. До их завершения нельзя представлять версию как промышленно готовую.
 

@@ -1,3 +1,7 @@
+## 0.2.0b6 — 2026-10-29
+
+- Offer the official prebuilt uv installer without invoking Homebrew.
+
 ## 0.2.0b5 — 2026-10-29
 
 - Run first-login installer tests consistently on macOS and Linux CI.

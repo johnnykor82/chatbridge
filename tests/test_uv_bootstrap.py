@@ -26,23 +26,26 @@ def missing_uv(monkeypatch):
     monkeypatch.setattr(installer, "find_uv", lambda: next(available))
 
 
-def test_missing_uv_offers_homebrew_and_continues(monkeypatch, capsys):
+@pytest.mark.parametrize("brew", ["/usr/local/bin/brew", "/opt/homebrew/bin/brew", None])
+def test_missing_uv_uses_standalone_even_when_homebrew_exists(monkeypatch, capsys, brew):
     interactive(monkeypatch)
     missing_uv(monkeypatch)
-    monkeypatch.setattr(installer, "_homebrew", lambda: "/opt/homebrew/bin/brew")
-    commands = []
-    monkeypatch.setattr(installer, "run", lambda argv: commands.append(argv))
+    monkeypatch.setattr(installer.shutil, "which", lambda name: brew if name == "brew" else None)
+    calls = []
+    monkeypatch.setattr(installer, "_install_uv_standalone", lambda: calls.append("standalone"))
+    monkeypatch.setattr(installer, "run", lambda argv: pytest.fail("must not invoke Homebrew"))
     assert installer.require_uv() == "/home/example/.local/bin/uv"
-    assert commands == [["/opt/homebrew/bin/brew", "install", "uv"]]
+    assert calls == ["standalone"]
     output = capsys.readouterr().out
-    assert "brew install uv" in output
+    assert "official standalone installer" in output
     assert "Continuing ChatBridge installation" in output
 
 
 def test_no_homebrew_offers_official_standalone_installer(monkeypatch, capsys):
     interactive(monkeypatch)
     missing_uv(monkeypatch)
-    monkeypatch.setattr(installer, "_homebrew", lambda: None)
+    for key in ("UV_INSTALL_DIR", "XDG_BIN_HOME", "CARGO_HOME"):
+        monkeypatch.setenv(key, "/custom/" + key.lower())
     requests = []
     monkeypatch.setattr(
         installer.urllib.request, "urlopen",
@@ -54,29 +57,30 @@ def test_no_homebrew_offers_official_standalone_installer(monkeypatch, capsys):
         assert argv[0] == "/bin/sh"
         assert Path(argv[1]).read_text().startswith("#!/bin/sh")
         assert kwargs["env"]["UV_NO_MODIFY_PATH"] == "1"
+        assert kwargs["env"]["UV_INSTALL_DIR"] == str(Path.home() / ".local/bin")
     monkeypatch.setattr(installer.subprocess, "run", simulate_run)
     assert installer.require_uv() == "/home/example/.local/bin/uv"
     assert requests == ["https://astral.sh/uv/install.sh"]
     assert len(commands) == 1
     assert "official standalone installer" in capsys.readouterr().out
+    assert installer.os.environ["UV_INSTALL_DIR"] == "/custom/uv_install_dir"
 
 
 @pytest.mark.parametrize("answer", ["n", "", "no"])
 def test_refusing_uv_install_does_not_run_commands(monkeypatch, answer):
     interactive(monkeypatch, answer)
     monkeypatch.setattr(installer, "find_uv", lambda: None)
-    monkeypatch.setattr(installer, "_homebrew", lambda: "/opt/homebrew/bin/brew")
     monkeypatch.setattr(installer, "run", lambda argv: pytest.fail("must not install"))
-    with pytest.raises(installer.InstallationError, match="declined"):
+    monkeypatch.setattr(installer, "_install_uv_standalone", lambda: pytest.fail("must not install"))
+    with pytest.raises(installer.InstallationError, match="declined.*https://docs.astral.sh"):
         installer.require_uv()
 
 
 def test_noninteractive_never_installs_or_downloads(monkeypatch):
     monkeypatch.setattr(installer.sys, "stdin", SimpleNamespace(isatty=lambda: False))
     monkeypatch.setattr(installer, "find_uv", lambda: None)
-    monkeypatch.setattr(installer, "_homebrew", lambda: None)
     monkeypatch.setattr(installer, "_install_uv_standalone", lambda: pytest.fail("must not install"))
-    with pytest.raises(installer.InstallationError, match="not interactive"):
+    with pytest.raises(installer.InstallationError, match="not interactive.*https://docs.astral.sh"):
         installer.require_uv()
 
 
@@ -111,7 +115,7 @@ def test_official_uv_installer_download_failure_is_actionable(monkeypatch):
     def offline(url, timeout):
         raise OSError("network disabled for test")
     monkeypatch.setattr(installer.urllib.request, "urlopen", offline)
-    with pytest.raises(installer.InstallationError, match="Could not install uv"):
+    with pytest.raises(installer.InstallationError, match="Manual installation: https://docs.astral.sh"):
         installer._install_uv_standalone()
 
 
@@ -122,3 +126,26 @@ def test_official_uv_installer_rejects_oversized_script(monkeypatch):
     )
     with pytest.raises(installer.InstallationError, match="unexpectedly large"):
         installer._install_uv_standalone()
+
+
+def test_bootstrap_does_not_fallback_to_homebrew_on_network_failure(monkeypatch):
+    interactive(monkeypatch)
+    monkeypatch.setattr(installer, "find_uv", lambda: None)
+    monkeypatch.setattr(installer.shutil, "which", lambda name: "/usr/local/bin/brew")
+    monkeypatch.setattr(installer, "run", lambda argv: pytest.fail("must not invoke Homebrew"))
+    monkeypatch.setattr(installer.subprocess, "run", lambda *a, **kw: pytest.fail("must not execute"))
+
+    def offline(url, timeout):
+        raise OSError("offline")
+
+    monkeypatch.setattr(installer.urllib.request, "urlopen", offline)
+    with pytest.raises(installer.InstallationError, match="Manual installation: https://docs.astral.sh"):
+        installer.require_uv()
+
+
+def test_bootstrap_missing_executable_after_install_has_manual_guidance(monkeypatch):
+    interactive(monkeypatch)
+    monkeypatch.setattr(installer, "find_uv", lambda: None)
+    monkeypatch.setattr(installer, "_install_uv_standalone", lambda: None)
+    with pytest.raises(installer.InstallationError, match="executable was not found.*https://docs.astral.sh"):
+        installer.require_uv()

@@ -127,16 +127,6 @@ def find_uv():
     return None
 
 
-def _homebrew():
-    found = shutil.which("brew")
-    if found:
-        return found
-    for candidate in (Path("/opt/homebrew/bin/brew"), Path("/usr/local/bin/brew")):
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
-    return None
-
-
 UV_INSTALL_URL = "https://astral.sh/uv/install.sh"
 
 
@@ -158,6 +148,7 @@ def _install_uv_standalone():
             path.write_bytes(script)
             run_env = os.environ.copy()
             run_env["UV_NO_MODIFY_PATH"] = "1"
+            run_env["UV_INSTALL_DIR"] = str(Path.home() / ".local/bin")
             subprocess.run(["/bin/sh", str(path)], check=True, env=run_env)
     except (OSError, urllib.error.URLError, TimeoutError, ValueError,
             subprocess.CalledProcessError) as exc:
@@ -173,16 +164,11 @@ def require_uv():
         return found
 
     print("\nChatBridge needs 'uv' to create an isolated Python environment.")
-    brew = _homebrew()
-    if brew:
-        print("Homebrew detected. Proposed command: brew install uv")
-        install_method = "Homebrew"
-    else:
-        print("Homebrew not detected. The official standalone installer can be used:")
-        print("  " + UV_INSTALL_URL)
-        print("The installer script will be downloaded and executed as your user.")
-        print("Your shell configuration will not be modified.")
-        install_method = "official uv installer"
+    print("The official standalone installer can be used, without Homebrew:")
+    print("  " + UV_INSTALL_URL)
+    print("The installer script will be downloaded and executed as your user.")
+    print("uv binaries will be installed under " + str(Path.home() / ".local/bin"))
+    print("Your shell configuration will not be modified.")
 
     if not sys.stdin.isatty():
         raise InstallationError(
@@ -192,10 +178,13 @@ def require_uv():
         )
 
     try:
-        answer = input("Install uv now using " + install_method + "? [y/N]: ").strip().lower()
+        answer = input("Install uv now using the official standalone installer? [y/N]: ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         print()
-        raise InstallationError("uv installation was cancelled") from None
+        raise InstallationError(
+            "uv installation was cancelled. Manual installation: "
+            "https://docs.astral.sh/uv/getting-started/installation/"
+        ) from None
     if answer not in ("y", "yes"):
         raise InstallationError(
             "uv installation declined. To install it manually, see "
@@ -203,13 +192,7 @@ def require_uv():
         )
 
     print("Installing uv...", flush=True)
-    if brew:
-        try:
-            run([brew, "install", "uv"])
-        except (OSError, subprocess.CalledProcessError) as exc:
-            raise InstallationError("Homebrew could not install uv: " + str(exc)) from exc
-    else:
-        _install_uv_standalone()
+    _install_uv_standalone()
 
     found = find_uv()
     if not found:
