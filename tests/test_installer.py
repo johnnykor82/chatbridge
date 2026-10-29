@@ -38,6 +38,10 @@ def args(tmp, *, command="install", **kwargs):
 
 @pytest.fixture
 def isolated(tmp_path, monkeypatch):
+    # Model macOS inside this module without changing the process-wide sys.platform.
+    monkeypatch.setattr(installer, "sys", SimpleNamespace(**{
+        **vars(installer.sys), "platform": "darwin",
+    }))
     chrome = tmp_path / "fake-chrome"
     chrome.write_text("fake")
     release = tmp_path / "app" / "releases" / "test-release"

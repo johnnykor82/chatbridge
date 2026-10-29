@@ -1,3 +1,7 @@
+## 0.2.0b5 — 2026-10-29
+
+- Run first-login installer tests consistently on macOS and Linux CI.
+
 ## 0.2.0b4 — 2026-10-29
 
 - Explain first login for the background Chrome profile and show the exact
