@@ -138,6 +138,7 @@ def test_official_uv_installer_rejects_oversized_script(monkeypatch):
 
 def test_bootstrap_does_not_fallback_to_homebrew_on_network_failure(monkeypatch):
     interactive(monkeypatch)
+    monkeypatch.setattr(installer, "uv_target", lambda: "aarch64-apple-darwin")
     monkeypatch.setattr(installer, "find_uv", lambda: None)
     monkeypatch.setattr(installer.shutil, "which", lambda name: "/usr/local/bin/brew")
     monkeypatch.setattr(installer, "run", lambda argv: pytest.fail("must not invoke Homebrew"))

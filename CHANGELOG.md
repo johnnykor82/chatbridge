@@ -1,3 +1,7 @@
+## 0.2.0b8 — 2026-10-29
+
+- Fix the offline bootstrap test on Intel Linux CI.
+
 ## 0.2.0b7 — 2026-10-29
 
 - Select a compatible native uv and provide a checksum-verified GitHub fallback
