@@ -524,3 +524,9 @@ def test_upgrade_rollback_waits_for_partial_bootstrap_to_unload(
     assert bootstrap_times[0] >= 0.35
     assert bootstrap_times[1] - bootstrap_times[0] >= 0.35
     assert plist.read_bytes() == original
+
+
+def test_source_release_includes_runtime_openapi_schema(tmp_path):
+    installer.release_files(tmp_path / "release")
+    schema = json.loads((tmp_path / "release/docs/openapi.json").read_text())
+    assert "/v1/browser/wake" in schema["paths"]

@@ -1135,6 +1135,32 @@ def make_app(store: Store, engine: GatewayEngine, settings: Settings, browser_su
             }
         )
 
+    def unavailable_browser(snapshot):
+        idle = snapshot.get("state") == "idle"
+        return web.json_response(
+            {
+                "ready": False,
+                "browser": snapshot,
+                "chatgpt_authenticated": None if idle else False,
+                "reason": "browser_idle" if idle else "browser_unavailable",
+            },
+            status=503,
+        )
+
+    async def wake_browser(req):
+        if browser_supervisor is None:
+            return json_error(409, "Browser wake requires managed browser mode")
+        try:
+            async with browser_supervisor.activity():
+                return web.json_response({"browser": browser_status()})
+        except Exception:
+            logging.getLogger(__name__).warning("Managed browser wake failed", exc_info=True)
+            return web.json_response(
+                {"error": {"message": "Managed browser startup failed", "code": "browser_unavailable"},
+                 "browser": browser_status()},
+                status=503,
+            )
+
     async def readiness(req):
         if engine.provider_status()["provider_rate_limited"]:
             return cooldown_response()
@@ -1160,15 +1186,7 @@ def make_app(store: Store, engine: GatewayEngine, settings: Settings, browser_su
                 {"ready": True, "browser": snapshot, "chatgpt_authenticated": None}
             )
         if browser_supervisor and not browser_supervisor.cdp_url:
-            return web.json_response(
-                {
-                    "ready": False,
-                    "browser": snapshot,
-                    "chatgpt_authenticated": False,
-                    "reason": "browser_unavailable",
-                },
-                status=503,
-            )
+            return unavailable_browser(snapshot)
         try:
             browser = await engine.transport._ensure()
             page = await engine.transport._new_page(browser)
@@ -1182,11 +1200,15 @@ def make_app(store: Store, engine: GatewayEngine, settings: Settings, browser_su
                 await editor.wait_for(state="visible", timeout=12000)
             finally:
                 await page.close()
+            if browser_supervisor and not browser_supervisor.cdp_url:
+                return unavailable_browser(browser_status())
             ready_cache.update(checked_at=time.monotonic(), browser_key=browser_key, ready=True)
             return web.json_response(
                 {"ready": True, "browser": snapshot, "chatgpt_authenticated": True}
             )
         except Exception:
+            if browser_supervisor and not browser_supervisor.cdp_url:
+                return unavailable_browser(browser_status())
             if engine.provider_status()["provider_rate_limited"]:
                 return cooldown_response()
             ready_cache.update(checked_at=time.monotonic(), browser_key=browser_key, ready=False)
@@ -1222,7 +1244,9 @@ def make_app(store: Store, engine: GatewayEngine, settings: Settings, browser_su
 
     async def openapi_schema(req):
         """Serve generated local API schema without provider access."""
-        schema_path = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
+        schema_path = Path(__file__).resolve().with_name("openapi.json")
+        if not schema_path.exists():
+            schema_path = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
         if not schema_path.exists():
             return json_error(503, "API schema not installed")
         return web.json_response(json.loads(schema_path.read_text(encoding="utf-8")))
@@ -1468,6 +1492,7 @@ def make_app(store: Store, engine: GatewayEngine, settings: Settings, browser_su
     app.router.add_get("/v1/requests/{request_id}/events", events)
     app.router.add_get("/health", health)
     app.router.add_get("/ready", readiness)
+    app.router.add_post("/v1/browser/wake", wake_browser)
     app.router.add_get("/v1/system/status", system_status)
     app.router.add_get("/metrics", metrics)
     app.router.add_get("/v1/openapi.json", openapi_schema)

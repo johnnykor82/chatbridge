@@ -17,6 +17,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class ChromeSupervisor:
         *,
         startup_timeout: float = 35,
         check_interval: float = 4,
+        idle_timeout: float = 300,
         on_ready=None,
         headless: bool = False,
     ):
@@ -42,6 +44,7 @@ class ChromeSupervisor:
         self.chrome = Path(chrome or MAC_CHROME).expanduser()
         self.startup_timeout = startup_timeout
         self.check_interval = check_interval
+        self.idle_timeout = idle_timeout
         self.on_ready = on_ready
         self.headless = headless
         self._debug_port: int | None = None
@@ -53,6 +56,10 @@ class ChromeSupervisor:
         self._watchdog: asyncio.Task | None = None
         self._stopping = False
         self._restarts = 0
+        self._lifecycle_lock = asyncio.Lock()
+        self._active_requests = 0
+        self._last_activity = time.monotonic()
+        self._idle = False
 
     def _identity(self, pid: int) -> dict | None:
         if pid <= 1:
@@ -105,6 +112,8 @@ class ChromeSupervisor:
             "state": (
                 "stopped"
                 if self._stopping
+                else "idle"
+                if self._idle
                 else "running"
                 if pid and self.cdp_url
                 else "starting"
@@ -119,6 +128,9 @@ class ChromeSupervisor:
             "profile": str(self.profile),
             "restart_count": self._restarts,
             "last_error": self.last_error,
+            "active_requests": self._active_requests,
+            "idle_timeout_seconds": self.idle_timeout,
+            "wake_on_request": self._idle and not self._stopping,
         }
 
     def _owner_file(self) -> Path:
@@ -236,7 +248,9 @@ class ChromeSupervisor:
     async def _terminate_owned(self) -> None:
         pid = self._active_pid()
         proc = self.process
-        if pid and self._identity(pid):
+        if pid and self._identity(pid) is None:
+            raise ProfileInUse("Refusing to terminate Chrome with unverified ownership")
+        if pid:
             try:
                 os.killpg(pid, signal.SIGTERM)
             except ProcessLookupError:
@@ -256,6 +270,8 @@ class ChromeSupervisor:
                 await asyncio.wait_for(asyncio.to_thread(proc.wait), timeout=3)
             except (ChildProcessError, asyncio.TimeoutError):
                 pass
+        if (proc and proc.poll() is None) or (pid and self._identity(pid)):
+            raise RuntimeError("Owned Chrome did not exit; profile remains reserved")
         self.process = None
         self._adopted_pid = None
         self.cdp_url = None
@@ -319,41 +335,93 @@ class ChromeSupervisor:
             await asyncio.sleep(0.25)
         raise TimeoutError("Owned Chrome did not publish a verified CDP endpoint")
 
-    async def start(self) -> None:
+    def _release_profile(self) -> None:
         if self._lockfile is not None:
-            return
-        self._stopping = False
-        self._acquire_profile()
+            self._owner_file().unlink(missing_ok=True)
+            fcntl.flock(self._lockfile.fileno(), fcntl.LOCK_UN)
+            self._lockfile.close()
+            self._lockfile = None
+
+    async def _ensure_running_locked(self) -> None:
         try:
             await self._launch()
-        except Exception as exc:
+            if self._stopping:
+                raise RuntimeError("Browser supervisor is stopping")
+            self._idle = False
+        except BaseException as exc:
             self.last_error = f"{type(exc).__name__}: {exc}"
-            log.warning("Managed Chrome startup failed: %s", self.last_error)
-        self._watchdog = asyncio.create_task(self._monitor(), name="chatbridge-browser-watchdog")
+            # Also dispose of a partially launched process on timeout/cancellation.
+            await self._terminate_owned()
+            raise
+
+    @asynccontextmanager
+    async def activity(self):
+        """Lease Chrome for one real operation, including startup and cleanup."""
+        async with self._lifecycle_lock:
+            if self._stopping or self._lockfile is None:
+                raise RuntimeError("Browser supervisor is stopped")
+            await self._ensure_running_locked()
+            self._active_requests += 1
+        try:
+            yield
+        finally:
+            # No await: cancellation cannot leak an activity lease.
+            self._active_requests -= 1
+            self._last_activity = time.monotonic()
+
+    async def start(self) -> None:
+        async with self._lifecycle_lock:
+            if self._lockfile is not None:
+                return
+            self._stopping = False
+            self._idle = False
+            self._acquire_profile()
+            try:
+                await self._ensure_running_locked()
+            except asyncio.CancelledError:
+                self._release_profile()
+                raise
+            except Exception:
+                log.warning("Managed Chrome startup failed: %s", self.last_error)
+            self._last_activity = time.monotonic()
+            self._watchdog = asyncio.create_task(
+                self._monitor(), name="chatbridge-browser-watchdog"
+            )
 
     async def _monitor(self):
         delay = self.check_interval
         try:
             while not self._stopping:
                 await asyncio.sleep(delay)
-                pid = self._active_pid()
-                if pid and self.cdp_url:
-                    current = self._current_endpoint()
-                    if (
-                        current
-                        and current[0] == self.cdp_url
-                        and await asyncio.to_thread(self._probe, *current)
-                    ):
+                async with self._lifecycle_lock:
+                    if self._stopping or self._idle:
                         continue
-                self.cdp_url = None
-                self._restarts += 1
-                try:
-                    await self._launch()
-                    delay = self.check_interval
-                except Exception as exc:
-                    self.last_error = f"{type(exc).__name__}: {exc}"
-                    log.warning("Managed Chrome recovery failed: %s", self.last_error)
-                    delay = min(max(delay * 2, self.check_interval), 60)
+                    if (not self._active_requests
+                            and time.monotonic() - self._last_activity >= self.idle_timeout):
+                        try:
+                            await self._terminate_owned()
+                        except Exception as exc:
+                            self.last_error = f"{type(exc).__name__}: {exc}"
+                            log.warning("Managed Chrome idle shutdown failed: %s", self.last_error)
+                            delay = min(max(delay * 2, self.check_interval), 60)
+                            continue
+                        self._idle = True
+                        log.info("Managed Chrome closed after idle timeout")
+                        continue
+                    pid = self._active_pid()
+                    if pid and self.cdp_url:
+                        current = self._current_endpoint()
+                        if (current and current[0] == self.cdp_url
+                                and await asyncio.to_thread(self._probe, *current)):
+                            continue
+                    self.cdp_url = None
+                    self._restarts += 1
+                    try:
+                        await self._ensure_running_locked()
+                        delay = self.check_interval
+                    except Exception:
+                        log.warning("Managed Chrome recovery failed: %s", self.last_error)
+                        delay = min(max(delay * 2, self.check_interval), 60)
         except asyncio.CancelledError:
             pass
 
@@ -363,9 +431,7 @@ class ChromeSupervisor:
             self._watchdog.cancel()
             await asyncio.gather(self._watchdog, return_exceptions=True)
             self._watchdog = None
-        await self._terminate_owned()
-        if self._lockfile is not None:
-            self._owner_file().unlink(missing_ok=True)
-            fcntl.flock(self._lockfile.fileno(), fcntl.LOCK_UN)
-            self._lockfile.close()
-            self._lockfile = None
+        async with self._lifecycle_lock:
+            await self._terminate_owned()
+            self._idle = False
+            self._release_profile()

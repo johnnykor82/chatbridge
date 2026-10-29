@@ -59,6 +59,7 @@ MANIFEST = (
     "docs/API_REFERENCE.md",
     "docs/ATTACHMENTS.md",
     "docs/IMAGES.md",
+    "docs/openapi.json",
     "pyproject.toml",
     "uv.lock",
     "LICENSE",
@@ -752,7 +753,12 @@ def do_install(args, *, update=False):
         api_key=args.api_key,
     ):
         print("Chrome runs in the background; no login window opens automatically.")
-        print("First check /v1/system/status: browser.mode must be managed and browser.state running.")
+        print("First wake the managed Chrome: curl -fsS -X POST http://"
+              + ("127.0.0.1" if args.host == "0.0.0.0" else args.host)
+              + ":" + str(args.port) + "/v1/browser/wake")
+        if args.api_key:
+            print("Use your configured Authorization header for wake and status checks.")
+        print("Then check /v1/system/status: browser.mode must be managed and browser.state running.")
         print("Wait until then; do not open this profile while its managed Chrome is starting.")
         print("NEXT STEP: only after that check, run this command in Terminal and sign in:")
         print(login_command(chrome, state / "chrome-profile"))
@@ -858,6 +864,7 @@ def do_status(args, *, doctor=False):
         result["chrome_installed"] = chrome.is_file()
         if (system or {}).get("transport") == "mock" or (
             readiness and readiness.get("chatgpt_authenticated") is None
+            and browser.get("state") != "idle"
         ):
             result["next_action"] = "Mock-only transport; no ChatGPT login checked"
         elif not result["python_installed"]:
@@ -866,16 +873,18 @@ def do_status(args, *, doctor=False):
             result["next_action"] = "Install Google Chrome, or use --chrome-path"
         elif not result["launchagent_loaded"] or not alive:
             result["next_action"] = "Check launchctl and service.stderr.log"
-        elif browser.get("mode") != "managed" or browser.get("state") != "running":
+        elif browser.get("mode") != "managed" or browser.get("state") not in ("running", "idle"):
             result["next_action"] = (
                 "Wait for /v1/system/status browser.state=running before opening "
                 "the managed profile; inspect service.stderr.log if it stays unavailable."
             )
-        elif not ready or readiness.get("chatgpt_authenticated") is not True:
+        elif browser.get("state") == "idle" or not ready or readiness.get("chatgpt_authenticated") is not True:
             result["next_action"] = (
-                "Chrome runs in the background. Confirm /v1/system/status reports "
-                "browser.mode=managed and browser.state=running, then run login_command in Terminal, "
-                "then sign in to ChatGPT in that managed profile."
+                ("Chrome is idle. " if browser.get("state") == "idle" else "Chrome runs in the background. ")
+                + "First send POST http://" + probe_host + ":" + str(port) + "/v1/browser/wake. "
+                + ("Use your configured Authorization header for wake and status checks. " if api_key else "")
+                + "Wait until /v1/system/status reports browser.mode=managed and browser.state=running, "
+                "then run login_command in Terminal and sign in to ChatGPT in that managed profile."
             )
             result["login_command"] = login_command(
                 chrome, env.get("CHATBRIDGE_CHROME_PROFILE", str(state / "chrome-profile"))

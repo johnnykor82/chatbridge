@@ -13,6 +13,8 @@ import re
 import time
 import uuid
 from collections.abc import AsyncIterator
+from contextlib import nullcontext
+from functools import wraps
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
@@ -348,6 +350,27 @@ def _turn_image_refs(
     return refs
 
 
+def _browser_operation(method):
+    @wraps(method)
+    async def operation(self, *args, **kwargs):
+        async with self._activity():
+            return await method(self, *args, **kwargs)
+    return operation
+
+
+def _browser_stream(method):
+    @wraps(method)
+    async def stream(self, *args, **kwargs):
+        async with self._activity():
+            source = method(self, *args, **kwargs)
+            try:
+                async for event in source:
+                    yield event
+            finally:
+                await source.aclose()
+    return stream
+
+
 class BrowserTransport:
     def __init__(
         self,
@@ -356,14 +379,17 @@ class BrowserTransport:
         verify_interval_seconds: float = 1.5,
         reasoning_effort: str = "high",
         visible_background: bool = False,
+        browser_supervisor=None,
     ):
         self.cdp_url = cdp_url
         self.hard_timeout = hard_timeout_seconds
         self.interval = verify_interval_seconds
         self.reasoning_effort = reasoning_effort
         self.visible_background = visible_background
+        self.browser_supervisor = browser_supervisor
         self._pw = None
         self._browser = None
+        self._connected_cdp_url = None
         self._connect_lock = asyncio.Lock()
         self._marker_search_lock = asyncio.Lock()
         self._delete_lock = asyncio.Lock()
@@ -373,6 +399,11 @@ class BrowserTransport:
         self._context_estimator = lambda sid: {"characters": 0, "messages": 0}
         self._history_reads = 0
         self._throttle_events = 0
+
+    def _activity(self):
+        if self.browser_supervisor is not None:
+            return self.browser_supervisor.activity()
+        return nullcontext()
 
     def set_context_estimator(self, estimator):
         self._context_estimator = estimator
@@ -396,12 +427,16 @@ class BrowserTransport:
             )
 
     async def _ensure(self):
+        if self.browser_supervisor is not None:
+            self.cdp_url = self.browser_supervisor.cdp_url
         # An authenticated Chrome instance may restart independently of the
         # HTTP daemon. Check the CDP transport before reusing a cached browser.
-        if self._browser and self._browser.is_connected():
+        if (self._browser and self._browser.is_connected()
+                and self._connected_cdp_url == self.cdp_url):
             return self._browser
         async with self._connect_lock:
-            if self._browser and self._browser.is_connected():
+            if (self._browser and self._browser.is_connected()
+                and self._connected_cdp_url == self.cdp_url):
                 return self._browser
             self._browser = None
             if self._pw:
@@ -415,10 +450,11 @@ class BrowserTransport:
                 self._browser = await self._pw.chromium.connect_over_cdp(
                     self.cdp_url, timeout=15000
                 )
-            except Exception:
+            except BaseException:
                 await self._pw.stop()
                 self._pw = None
                 raise
+            self._connected_cdp_url = self.cdp_url
         return self._browser
 
     async def _new_page(self, browser):
@@ -525,6 +561,7 @@ class BrowserTransport:
                 len(actual_norm) < 0.93 * len(expected_norm)):
             raise RuntimeError("ChatGPT editor did not retain the full message; no Send attempted")
 
+    @_browser_operation
     async def inspect_conversation(self, conversation_id: str, *, project_id: str) -> dict:
         """Verify a remote conversation loads under the claimed project URL."""
         if not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", conversation_id, re.I):
@@ -563,6 +600,7 @@ class BrowserTransport:
             if not page.is_closed():
                 await page.close()
 
+    @_browser_operation
     async def inspect_project(self, project_id: str) -> dict:
         """Read real project name/memory from ChatGPT settings, without editing."""
         if not re.fullmatch(r"g-p-[0-9a-f]{32}", project_id):
@@ -619,6 +657,7 @@ class BrowserTransport:
             if not page.is_closed():
                 await page.close()
 
+    @_browser_operation
     async def create_project(self, name: str, memory_mode: str) -> str:
         """Create a ChatGPT project via the visible UI; return its stable ID.
 
@@ -684,6 +723,7 @@ class BrowserTransport:
             if not page.is_closed():
                 await page.close()
 
+    @_browser_stream
     async def generate(
         self,
         *,
@@ -1259,6 +1299,7 @@ class BrowserTransport:
             log.warning("MCP UI approval inspection failed: %s", type(e).__name__)
         return None
 
+    @_browser_operation
     async def resolve_chat_marker(self, marker: str) -> dict:
         """Read-only built-in ChatGPT search, serialized with provider cooldown."""
         from .marker_lookup import resolve_in_browser, validate_marker
@@ -1274,6 +1315,7 @@ class BrowserTransport:
                 browser, marker, self._observe_provider_response, new_page=self._new_page
             )
 
+    @_browser_operation
     async def read_conversation(
         self, conversation_id: str, *, project_id: str | None = None
     ) -> dict:
@@ -1304,6 +1346,7 @@ class BrowserTransport:
             if not page.is_closed():
                 await page.close()
 
+    @_browser_operation
     async def _conversation_deletion_check(self, conversation_id: str, *, mutate: bool) -> bool:
         """Inspect or delete *one* physical chat; never delete an entire project.
 

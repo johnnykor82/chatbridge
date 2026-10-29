@@ -2993,6 +2993,36 @@
           }
         }
       }
+    },
+    "/v1/browser/wake": {
+      "post": {
+        "operationId": "post_wake_browser",
+        "summary": "Start the managed browser after intentional idle",
+        "description": "Explicitly wake the managed Chrome and wait for its verified CDP endpoint. Uses the same loopback Host, Origin, and optional bearer authentication as other gateway routes. Does not verify ChatGPT authentication.",
+        "security": [
+          {},
+          {
+            "OptionalBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Managed browser is running; returns browser status"
+          },
+          "401": {
+            "description": "Configured bearer authentication is missing or invalid"
+          },
+          "403": {
+            "description": "Invalid gateway Host or cross-origin request"
+          },
+          "409": {
+            "description": "Browser mode is mock or external"
+          },
+          "503": {
+            "description": "Managed browser startup failed; returns browser status and browser_unavailable error"
+          }
+        }
+      }
     }
   }
 }

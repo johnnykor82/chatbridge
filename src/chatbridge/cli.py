@@ -57,6 +57,8 @@ def main():
             on_ready=lambda url: setattr(transport, "cdp_url", url),
             headless=settings.chrome_headless,
         )
+    if supervisor:
+        transport.browser_supervisor = supervisor
     engine = GatewayEngine(
         store,
         transport,

@@ -44,9 +44,11 @@ Chrome starts **in the background**. If `/ready` is not HTTP 200, an interactive
 
 Declining, cancelling the prompt, or installing without an interactive terminal preserves the installation and printed manual command. `--dry-run` and `--no-start` never offer a login window; an already ready service needs no prompt. A window-opening failure also leaves the installed service in place. When Mac Control invokes this installer in Terminal, the same prompt is available through its inherited terminal input/output.
 
-For later manual login, first check `curl http://127.0.0.1:8787/v1/system/status` and wait until `browser.mode` is `managed` and `browser.state` is `running`. HTTP `/health` alone is insufficient: Chrome may still be starting. Do not run the window-opening command before this check, as it could race the supervisor for ownership of the profile. Then execute the command printed by the installer in Terminal and sign in normally to ChatGPT. For the default Chrome application and state directory, the command is:
+For later manual login, first call `POST /v1/browser/wake`, then check `curl http://127.0.0.1:8787/v1/system/status` and wait until `browser.mode` is `managed` and `browser.state` is `running`. HTTP `/health` alone is insufficient: Chrome may still be starting. Do not run the window-opening command before this check, as it could race the supervisor for ownership of the profile. Then execute the command printed by the installer in Terminal and sign in normally to ChatGPT. For the default Chrome application and state directory, the command is:
 
 ```sh
+curl -fsS -X POST http://127.0.0.1:8787/v1/browser/wake
+# Wait for browser.mode=managed and browser.state=running in /v1/system/status.
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --user-data-dir="$HOME/.chatbridge/chrome-profile" \
   --new-window "https://chatgpt.com/"
@@ -54,7 +56,7 @@ For later manual login, first check `curl http://127.0.0.1:8787/v1/system/status
 
 This asks the already running Chrome for that exact profile to open a window. It does not copy cookies or account tokens from another browser. Reuse the command whenever login is needed again. Do not use an ordinary Chrome window belonging to a different profile.
 
-For custom `--state-dir` or `--chrome-path`, use the shell-quoted command printed by the installer, or the `login_command` value from `./install.sh doctor` (with `--label YOUR_LABEL` for a custom service). Doctor reads the installed paths, including after an upgrade; copy the decoded command value, without JSON quotation/escaping. No API key is included in this command. If API authentication is enabled, use your existing authenticated client for the status check; the browser-opening command itself needs no token. `/ready` creates and closes its own temporary probe tab; it is not a persistent login window.
+For custom `--state-dir` or `--chrome-path`, use the shell-quoted command printed by the installer, or the `login_command` value from `./install.sh doctor` (with `--label YOUR_LABEL` for a custom service). Doctor reads the installed paths, including after an upgrade; copy the decoded command value, without JSON quotation/escaping. No API key is included in this command. If API authentication is enabled, use your existing authenticated client for the wake request and status check (add `Authorization: Bearer <your-API-key>` to the curl requests); the browser-opening command itself needs no token. When Chrome is running, `/ready` creates and closes its own temporary probe tab; it is not a persistent login window.
 
 ```sh
 curl http://127.0.0.1:8787/health
@@ -62,7 +64,9 @@ curl -i http://127.0.0.1:8787/ready
 curl http://127.0.0.1:8787/v1/system/status
 ```
 
-`/health` means the gateway is online; it **does not** mean ChatGPT is authorized. `/ready` returns 503 before login and 200 after ChatGPT authentication and editor readiness.
+`/health` means the gateway is online; it **does not** mean ChatGPT is authorized. `/ready` returns 503 before login or while Chrome is idle, and 200 after ChatGPT authentication and editor readiness when Chrome is running.
+
+After five minutes without real browser operations, ChatBridge stops its owned Chrome and reports `browser.state=idle`, preserving the profile. A new browser operation starts Chrome and waits for it. `/health`, `/v1/system/status` and `/ready` do not wake Chrome. In idle, `/ready` returns HTTP 503 with `ready=false`, `chatgpt_authenticated=null` and `reason=browser_idle`. This also applies to a window opened manually in the managed profile: it can close on idle. Call `POST /v1/browser/wake`, wait for `running`, and then use the login command again when needed.
 
 ## Commands
 

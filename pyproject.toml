@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chatbridge-gateway"
-version = "0.2.0b9"
+version = "0.2.0b10"
 description = "Multi-session local HTTP gateway to user-authorized ChatGPT web conversations"
 requires-python = ">=3.11"
 license = "MIT"
@@ -21,6 +21,9 @@ chatbridge = "chatbridge.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/chatbridge"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"docs/openapi.json" = "chatbridge/openapi.json"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -30,7 +30,8 @@ must preserve the intended scheme/Host; no cross-origin browser UI is enabled.
 | `GET` | `/health` | HTTP process health and session counters |
 | `GET` | `/metrics` | Active slots, peak slots, queue and event counters |
 | `GET` | `/v1/system/status` | Chrome ownership, availability and supported thinking levels |
-| `GET` | `/ready` | HTTP 200 only when Chrome and ChatGPT editor are usable |
+| `GET` | `/ready` | HTTP 200 only when Chrome and ChatGPT editor are usable; does not wake idle Chrome |
+| `POST` | `/v1/browser/wake` | Start owned Chrome explicitly, including before manual login |
 | `POST` | `/v1/sessions` | Create a session or attach an existing ChatGPT conversation |
 | `GET` | `/v1/sessions` | List stored sessions |
 | `GET` | `/v1/sessions/{session_id}` | Read a session |
@@ -63,6 +64,29 @@ Use `/ready` for authentication/editor readiness and `/v1/system/status`
 for browser state and thinking-effort defaults.
 `/metrics` exposes `active_slots`, `max_active_slots`, `capacity`,
 `queued`, `sessions` and `events`.
+
+### Browser idle and explicit wake
+
+After five minutes without real browser operations, ChatBridge stops its owned
+Chrome and reports `browser.state=idle` through `/v1/system/status`. The Chrome
+profile is preserved. A new browser operation starts Chrome and waits for it.
+A manually opened window in the managed profile can also close on idle.
+
+`GET /health`, `GET /v1/system/status` and `GET /ready` do not wake Chrome.
+While idle, `/ready` returns HTTP 503 with `ready=false`, `chatgpt_authenticated=null` and
+`reason=browser_idle`; it does not probe ChatGPT authentication.
+
+To wake Chrome explicitly before opening the managed profile for login:
+
+```sh
+curl -fsS -X POST "$CHATBRIDGE_URL/v1/browser/wake"
+```
+
+If an API key is configured, this wake request requires
+`Authorization: Bearer <your-API-key>`, like other authenticated endpoints.
+After wake, wait until `/v1/system/status` reports `browser.mode=managed` and
+`browser.state=running` before executing the installer-provided login command.
+Wake starts the browser; it does not sign into ChatGPT for you.
 
 ## 2. Create or attach a conversation
 
@@ -314,6 +338,7 @@ queried complete model list. There is no guaranteed model-selection API.
 | `404` | Unknown session or request |
 | `409` | Idempotency key reused with different message |
 | `502` | History synchronization or a compatibility completion failed |
+| `503` | Readiness unavailable, including `browser_idle` |
 | `504` | Compatibility completion exceeded its waiting deadline |
 
 `GET /health` being successful does not imply a working browser

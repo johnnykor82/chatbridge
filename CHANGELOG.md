@@ -1,3 +1,8 @@
+## 0.2.0b10 — 2026-10-29
+
+- Stop the managed browser after five idle minutes and restart it on demand.
+- Expose passive idle status and an explicit browser wake endpoint for login.
+
 ## 0.2.0b9 — 2026-10-29
 
 - Wait for launchd to finish unloading ChatBridge before restarting the service during upgrades.
