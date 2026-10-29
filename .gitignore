@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+*.db
+*.db-*
+.env
+*.log
+*.pid
+state/
+profiles/
+diagnostics/
+.DS_Store
+dist/
+*.egg-info/
+.coverage

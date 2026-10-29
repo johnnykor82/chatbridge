@@ -1,0 +1,51 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync --extra dev --locked
+      - name: Lint
+        run: uv run ruff check src tests scripts/installer.py
+      - name: Run offline tests
+        run: uv run pytest -q
+      - name: Build package
+        run: uv build
+
+  macos-installer:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+      - name: Installer unit tests
+        run: |
+          uv sync --extra dev --locked
+          uv run pytest -q tests/test_installer.py
+          uv run ruff check scripts/installer.py tests/test_installer.py
+      - name: Fresh isolated install (does not launch Chrome)
+        shell: bash
+        run: |
+          bash install.sh --no-start \
+            --label net.chatbridge.gateway-ci \
+            --port 18887 --chrome-path /usr/bin/true \
+            --prefix "$RUNNER_TEMP/chatbridge/app" \
+            --state-dir "$RUNNER_TEMP/chatbridge/data"
+          bash install.sh upgrade --no-start --label net.chatbridge.gateway-ci
+          bash install.sh doctor --label net.chatbridge.gateway-ci
+          bash install.sh uninstall --label net.chatbridge.gateway-ci \
+            --remove-app --purge-data --yes
+          test ! -e "$HOME/Library/LaunchAgents/net.chatbridge.gateway-ci.plist"
+          test ! -e "$RUNNER_TEMP/chatbridge/data"

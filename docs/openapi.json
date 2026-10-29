@@ -1,0 +1,2998 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ChatBridge local HTTP API",
+    "version": "1.0.0-preview",
+    "description": "Unofficial browser-backed ChatGPT gateway on a trusted local Mac. Browser selectors and private provider endpoints can change. A submitted request may be unknown; do not blindly resend. Project registry is local, not a provider-wide listing. The compatibility endpoint chat/completions is partial."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8787"
+    }
+  ],
+  "security": [
+    {},
+    {
+      "OptionalBearer": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "OptionalBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Required only if CHATBRIDGE_API_KEY is configured."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/v1/browser/sessions/{session_id}": {
+      "delete": {
+        "operationId": "delete_close",
+        "summary": "DELETE /v1/browser/sessions/{session_id}",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "get_info",
+        "summary": "GET /v1/browser/sessions/{session_id}",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}": {
+      "delete": {
+        "operationId": "delete_delete_local_session",
+        "summary": "DELETE /v1/sessions/{session_id}",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "get_get_session",
+        "summary": "GET /v1/sessions/{session_id}",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/rotation-guards/{guard_id}": {
+      "delete": {
+        "operationId": "delete_delete_rotation_guard",
+        "summary": "DELETE /v1/sessions/{session_id}/rotation-guards/{guard_id}",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "guard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "owner": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "put_put_rotation_guard",
+        "summary": "PUT /v1/sessions/{session_id}/rotation-guards/{guard_id}",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "guard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "owner": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "get_health",
+        "summary": "GET /health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "get_metrics",
+        "summary": "GET /metrics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "get_readiness",
+        "summary": "GET /ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/browser/capabilities": {
+      "get": {
+        "operationId": "get_capabilities",
+        "summary": "GET /v1/browser/capabilities",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        }
+      }
+    },
+    "/v1/browser/sessions": {
+      "get": {
+        "operationId": "get_list_sessions",
+        "summary": "GET /v1/browser/sessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_create",
+        "summary": "POST /v1/browser/sessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "background",
+                      "headless",
+                      "visible_background",
+                      "foreground"
+                    ]
+                  },
+                  "persist_profile": {
+                    "type": "boolean"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/browser/sessions/{session_id}/files/{file_id}": {
+      "get": {
+        "operationId": "get_file_fetch",
+        "summary": "GET /v1/browser/sessions/{session_id}/files/{file_id}",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session-scoped binary file",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        }
+      }
+    },
+    "/v1/browser/sessions/{session_id}/operations": {
+      "get": {
+        "operationId": "get_operation_by_key",
+        "summary": "GET /v1/browser/sessions/{session_id}/operations",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        }
+      }
+    },
+    "/v1/browser/sessions/{session_id}/operations/{operation_id}": {
+      "get": {
+        "operationId": "get_operation",
+        "summary": "GET /v1/browser/sessions/{session_id}/operations/{operation_id}",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        }
+      }
+    },
+    "/v1/browser/sessions/{session_id}/screenshot": {
+      "get": {
+        "operationId": "get_screenshot",
+        "summary": "GET /v1/browser/sessions/{session_id}/screenshot",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        }
+      }
+    },
+    "/v1/browser/sessions/{session_id}/snapshot": {
+      "get": {
+        "operationId": "get_snapshot",
+        "summary": "GET /v1/browser/sessions/{session_id}/snapshot",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        }
+      }
+    },
+    "/v1/browser/sessions/{session_id}/tabs": {
+      "get": {
+        "operationId": "get_tabs",
+        "summary": "GET /v1/browser/sessions/{session_id}/tabs",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_new_tab",
+        "summary": "POST /v1/browser/sessions/{session_id}/tabs",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "client_request_id": {
+                    "type": "string",
+                    "minLength": 8
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cleanup/operations/{operation_id}": {
+      "get": {
+        "operationId": "get_deletion_operation",
+        "summary": "GET /v1/cleanup/operations/{operation_id}",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/media/{media_id}": {
+      "get": {
+        "operationId": "get_read_media",
+        "summary": "GET /v1/media/{media_id}",
+        "parameters": [
+          {
+            "name": "media_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verified saved binary",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "operationId": "get_models",
+        "summary": "GET /v1/models",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "operationId": "get_openapi_schema",
+        "summary": "GET /v1/openapi.json",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/projects": {
+      "get": {
+        "operationId": "get_list_projects",
+        "summary": "GET /v1/projects",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "local",
+                "remote"
+              ]
+            },
+            "description": "Remote scope returns HTTP 501."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_create_project",
+        "summary": "POST /v1/projects",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "memory_mode": {
+                    "enum": [
+                      "default",
+                      "project_only"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/operations/{operation_id}": {
+      "get": {
+        "operationId": "get_get_project_creation",
+        "summary": "GET /v1/projects/operations/{operation_id}",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}": {
+      "get": {
+        "operationId": "get_get_project",
+        "summary": "GET /v1/projects/{project_id}",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch_unsupported_project_operation",
+        "summary": "PATCH /v1/projects/{project_id}",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Explicitly unsupported; no simulated success"
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/chats": {
+      "get": {
+        "operationId": "get_unsupported_project_operation",
+        "summary": "GET /v1/projects/{project_id}/chats",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Explicitly unsupported; no simulated success"
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/chats/{conversation_id}/verify": {
+      "get": {
+        "operationId": "get_verify_chat_membership",
+        "summary": "GET /v1/projects/{project_id}/chats/{conversation_id}/verify",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/files": {
+      "get": {
+        "operationId": "get_unsupported_project_operation",
+        "summary": "GET /v1/projects/{project_id}/files",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Explicitly unsupported; no simulated success"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_unsupported_project_operation",
+        "summary": "POST /v1/projects/{project_id}/files",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Explicitly unsupported; no simulated success"
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/instructions": {
+      "get": {
+        "operationId": "get_unsupported_project_operation",
+        "summary": "GET /v1/projects/{project_id}/instructions",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Explicitly unsupported; no simulated success"
+          }
+        }
+      },
+      "put": {
+        "operationId": "put_unsupported_project_operation",
+        "summary": "PUT /v1/projects/{project_id}/instructions",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Explicitly unsupported; no simulated success"
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/live-metadata": {
+      "get": {
+        "operationId": "get_live_project_metadata",
+        "summary": "GET /v1/projects/{project_id}/live-metadata",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/metadata": {
+      "get": {
+        "operationId": "get_project_metadata",
+        "summary": "GET /v1/projects/{project_id}/metadata",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/sources": {
+      "get": {
+        "operationId": "get_unsupported_project_operation",
+        "summary": "GET /v1/projects/{project_id}/sources",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Explicitly unsupported; no simulated success"
+          }
+        }
+      }
+    },
+    "/v1/requests/{request_id}": {
+      "get": {
+        "operationId": "get_get_request",
+        "summary": "GET /v1/requests/{request_id}",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/requests/{request_id}/events": {
+      "get": {
+        "operationId": "get_events",
+        "summary": "GET /v1/requests/{request_id}/events",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream including corrections",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/sessions": {
+      "get": {
+        "operationId": "get_list_sessions",
+        "summary": "GET /v1/sessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_create_session",
+        "summary": "POST /v1/sessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "enum": [
+                      "temporary",
+                      "persistent",
+                      "continued",
+                      "standard"
+                    ]
+                  },
+                  "project_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/approval-observations": {
+      "get": {
+        "operationId": "get_session_approval_observations",
+        "summary": "UI clicks only; not verified MCP authorization or execution.",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/context-estimate": {
+      "get": {
+        "operationId": "get_session_context_estimate",
+        "summary": "GET /v1/sessions/{session_id}/context-estimate",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/deletion-preview": {
+      "get": {
+        "operationId": "get_deletion_preview",
+        "summary": "GET /v1/sessions/{session_id}/deletion-preview",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/messages": {
+      "get": {
+        "operationId": "get_messages",
+        "summary": "GET /v1/sessions/{session_id}/messages",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_send_message",
+        "summary": "POST /v1/sessions/{session_id}/messages",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "client_request_id": {
+                    "type": "string"
+                  },
+                  "reasoning_effort": {
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/rotation-guards": {
+      "get": {
+        "operationId": "get_session_rotation_guards",
+        "summary": "GET /v1/sessions/{session_id}/rotation-guards",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/turn-state": {
+      "get": {
+        "operationId": "get_turn_state",
+        "summary": "GET /v1/sessions/{session_id}/turn-state",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/system/status": {
+      "get": {
+        "operationId": "get_system_status",
+        "summary": "GET /v1/system/status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          }
+        }
+      }
+    },
+    "/v1/browser/sessions/list": {
+      "post": {
+        "operationId": "post_list_sessions",
+        "summary": "POST /v1/browser/sessions/list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "session_tokens": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/browser/sessions/{session_id}/actions": {
+      "post": {
+        "operationId": "post_action",
+        "summary": "POST /v1/browser/sessions/{session_id}/actions",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "navigate",
+                      "click",
+                      "fill",
+                      "press",
+                      "scroll",
+                      "select",
+                      "hover",
+                      "wait_for",
+                      "new_tab",
+                      "close_tab",
+                      "evaluate",
+                      "upload",
+                      "download"
+                    ]
+                  },
+                  "client_request_id": {
+                    "type": "string",
+                    "minLength": 8
+                  },
+                  "tab_id": {
+                    "type": "string"
+                  },
+                  "selector": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "expression": {
+                    "type": "string"
+                  },
+                  "file_id": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "enum": [
+                      "background",
+                      "headless",
+                      "auto",
+                      "visible_background",
+                      "foreground"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/browser/sessions/{session_id}/files": {
+      "post": {
+        "operationId": "post_file_upload",
+        "summary": "POST /v1/browser/sessions/{session_id}/files",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/browser/sessions/{session_id}/reopen": {
+      "post": {
+        "operationId": "post_reopen",
+        "summary": "POST /v1/browser/sessions/{session_id}/reopen",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Browser-Session-Token",
+            "in": "header",
+            "required": true,
+            "description": "Secret per-session capability; never share with another agent",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          },
+          "403": {
+            "description": "Session capability missing or invalid"
+          },
+          "503": {
+            "description": "Owned browser unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/chat/completions": {
+      "post": {
+        "operationId": "post_chat_completions",
+        "summary": "Partial OpenAI-style compatibility; not a full messages contract.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "messages": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "stream": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/chats/resolve-marker": {
+      "post": {
+        "operationId": "post_resolve_chat_marker",
+        "summary": "POST /v1/chats/resolve-marker",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cleanup/operations/{operation_id}/reconcile": {
+      "post": {
+        "operationId": "post_reconcile_deletion",
+        "summary": "POST /v1/cleanup/operations/{operation_id}/reconcile",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cleanup/plan": {
+      "post": {
+        "operationId": "post_cleanup_plan",
+        "summary": "Read-only local dry-run inventory.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title_prefix": {
+                    "type": "string"
+                  },
+                  "limit": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/verify": {
+      "post": {
+        "operationId": "post_verify_existing_project",
+        "summary": "POST /v1/projects/verify",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/requests/{request_id}/reconcile": {
+      "post": {
+        "operationId": "post_reconcile",
+        "summary": "Read-only recovery, never resubmit the model prompt.",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/deletion": {
+      "post": {
+        "operationId": "post_delete_remote_conversation",
+        "summary": "Delete one remote ChatGPT chat with explicit identity and idempotency.",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "confirm": {
+                    "const": "delete_remote"
+                  },
+                  "client_request_id": {
+                    "type": "string"
+                  },
+                  "expected_conversation_id": {
+                    "type": "string"
+                  },
+                  "expected_title": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/rotate": {
+      "post": {
+        "operationId": "post_rotate_session",
+        "summary": "POST /v1/sessions/{session_id}/rotate",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/sync": {
+      "post": {
+        "operationId": "post_sync_session",
+        "summary": "POST /v1/sessions/{session_id}/sync",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result or local snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Conflict or unverified identity"
+          },
+          "429": {
+            "description": "Provider cooldown"
+          },
+          "502": {
+            "description": "Upstream verification unavailable"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "202": {
+            "description": "Accepted, pending, or unknown"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/memory": {
+      "put": {
+        "operationId": "put_unsupported_project_operation",
+        "summary": "PUT /v1/projects/{project_id}/memory",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Explicitly unsupported; no simulated success"
+          }
+        }
+      }
+    }
+  }
+}
