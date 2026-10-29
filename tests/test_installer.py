@@ -314,6 +314,9 @@ def test_install_prints_login_command_without_opening_window(
     tmp_path, monkeypatch, capsys, isolated
 ):
     monkeypatch.setattr(installer, "probe", lambda host, port, path="/health", **kw: path != "/ready")
+    monkeypatch.setattr(installer, "fetch_json", lambda host, port, path, **kw:
+                        {"browser": {"mode": "managed", "state": "running"}}
+                        if path == "/v1/system/status" else None)
     starts = []
     monkeypatch.setattr(installer, "start", lambda label, plist: starts.append(label))
     setting = args(tmp_path, no_start=False, api_key="NEVER_PRINT_THIS_KEY")

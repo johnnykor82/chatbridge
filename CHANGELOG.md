@@ -1,3 +1,7 @@
+## 0.2.0b11 — 2026-10-29
+
+- Wait for Chrome and verify the saved ChatGPT session before offering a manual check.
+
 ## 0.2.0b10 — 2026-10-29
 
 - Stop the managed browser after five idle minutes and restart it on demand.

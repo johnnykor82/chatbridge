@@ -1,6 +1,8 @@
 """Manual login consent never opens a different or unready Chrome profile."""
 import importlib.util
+import io
 import subprocess
+import urllib.error
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -111,6 +113,118 @@ def test_open_failure_does_not_fail_installation_or_print_secrets(login, monkeyp
     assert "PRIVATE_KEY" not in output
 
 
+def test_post_start_waits_for_browser_before_slow_authenticated_probe(login, monkeypatch, capsys):
+    requests = []
+    def fetch(host, port, path, **kwargs):
+        requests.append((path, kwargs))
+        if len(requests) == 1:
+            return {"browser": {"mode": "managed", "state": "starting"}}
+        if path == "/v1/system/status":
+            return login[2]
+        assert kwargs["timeout"] >= 35
+        return {"ready": True, "chatgpt_authenticated": True}
+    monkeypatch.setattr(installer, "fetch_json", fetch)
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("saved login must not prompt"))
+    installer.check_started_login(login[0], login[1], "127.0.0.1", 8787, "PRIVATE_KEY")
+    assert [path for path, _ in requests] == ["/v1/system/status", "/v1/system/status", "/ready"]
+    assert "authenticated" in capsys.readouterr().out
+    assert not login[3]
+
+
+@pytest.fixture
+def startup_clock(login, monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(installer.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(installer.time, "sleep", lambda seconds: now.__setitem__(0, now[0] + seconds))
+    return now
+
+
+@pytest.mark.parametrize("startup_seconds", [0, 30])
+def test_post_start_wait_covers_slow_chrome_without_delaying_early_ready(
+    login, monkeypatch, startup_clock, startup_seconds
+):
+    readiness_times = []
+    def fetch(host, port, path, **kwargs):
+        if path == "/v1/system/status":
+            return (login[2] if startup_clock[0] >= startup_seconds else
+                    {"browser": {"mode": "managed", "state": "starting"}})
+        readiness_times.append(startup_clock[0])
+        return {"ready": True, "chatgpt_authenticated": True}
+    monkeypatch.setattr(installer, "fetch_json", fetch)
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("saved login must not prompt"))
+    installer.check_started_login(login[0], login[1], "127.0.0.1", 8787, "PRIVATE_KEY")
+    assert readiness_times == [startup_seconds]
+
+
+def test_post_start_status_timeouts_share_a_40_second_deadline(login, monkeypatch, startup_clock):
+    def fetch(host, port, path, **kwargs):
+        assert path == "/v1/system/status"
+        assert 0 < kwargs["timeout"] <= min(1, 40 - startup_clock[0])
+        startup_clock[0] += kwargs["timeout"]
+        return None
+    monkeypatch.setattr(installer, "fetch_json", fetch)
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("unsafe prompt"))
+    installer.check_started_login(login[0], login[1], "127.0.0.1", 8787, "PRIVATE_KEY")
+    assert startup_clock[0] == 40
+
+
+@pytest.mark.parametrize("ready", [None, {"ready": False, "chatgpt_authenticated": False,
+                                          "reason": "auth_required_or_browser_unavailable"}])
+def test_uncertain_readiness_offers_manual_check_without_claiming_logout(login, monkeypatch, capsys, ready):
+    monkeypatch.setattr(installer, "fetch_json", lambda host, port, path, **kw:
+                        login[2] if path == "/v1/system/status" else ready)
+    prompts = []
+    monkeypatch.setattr("builtins.input", lambda prompt: prompts.append(prompt) or "n")
+    installer.check_started_login(login[0], login[1], "127.0.0.1", 8787, "PRIVATE_KEY")
+    output = capsys.readouterr().out
+    assert "could not be verified" in output
+    assert "sign in" not in output.lower()
+    assert "inspect" in prompts[0]
+    assert "PRIVATE_KEY" not in output
+
+
+def test_http_503_json_is_available_for_diagnosis(monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise urllib.error.HTTPError("http://localhost/ready", 503, "unavailable", {},
+                                     io.BytesIO(b'{"ready":false,"reason":"browser_unavailable"}'))
+    monkeypatch.setattr(installer.urllib.request, "urlopen", unavailable)
+    assert installer.fetch_json("127.0.0.1", 8787, "/ready")["reason"] == "browser_unavailable"
+
+
+def test_cached_failure_is_retried_after_expiry_before_offering_window(login, monkeypatch):
+    ready_calls = []
+    sleeps = []
+    def fetch(host, port, path, **kwargs):
+        if path == "/v1/system/status":
+            return login[2]
+        ready_calls.append(kwargs)
+        return ({"ready": False, "chatgpt_authenticated": False, "cached": True}
+                if len(ready_calls) == 1 else {"ready": True, "chatgpt_authenticated": True})
+    monkeypatch.setattr(installer, "fetch_json", fetch)
+    monkeypatch.setattr(installer.time, "sleep", sleeps.append)
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("saved login must not prompt"))
+    installer.check_started_login(login[0], login[1], "127.0.0.1", 8787, "PRIVATE_KEY")
+    assert len(ready_calls) == 2
+    assert sleeps == [20]
+
+
+@pytest.mark.parametrize("status", [None, {"browser": {"mode": "managed", "state": "starting"}},
+                                    {"transport": "mock", "browser": {"mode": "mock"}},
+                                    {"browser": {"mode": "external", "state": "running"}}])
+def test_post_start_unready_or_mock_never_probes_auth_or_prompts(login, monkeypatch, startup_clock, status):
+    requests = []
+    def fetch(host, port, path, **kwargs):
+        requests.append(path)
+        assert path == "/v1/system/status"
+        return status
+    monkeypatch.setattr(installer, "fetch_json", fetch)
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("unsafe prompt"))
+    installer.check_started_login(login[0], login[1], "127.0.0.1", 8787, "PRIVATE_KEY")
+    assert len(requests) <= 80
+    assert startup_clock[0] <= 40
+    assert not login[3]
+
+
 
 @pytest.mark.parametrize("status", [None, [], {"browser": None}, {"browser": []}])
 def test_bad_status_never_prompts(login, monkeypatch, status):
@@ -150,6 +264,10 @@ def test_install_offers_login_only_after_started_and_not_ready(
     monkeypatch.setattr(installer, "start", lambda *a: None)
     monkeypatch.setattr(installer, "probe", lambda host, port, path="/health", **kw:
                         path != "/ready" or ready)
+    monkeypatch.setattr(installer, "fetch_json", lambda host, port, path, **kw:
+                        {"browser": {"mode": "managed", "state": "running"}}
+                        if path == "/v1/system/status" else
+                        {"ready": ready, "chatgpt_authenticated": ready})
     calls = []
     monkeypatch.setattr(installer, "offer_login", lambda *a: calls.append(a))
     installer.do_install(setting)

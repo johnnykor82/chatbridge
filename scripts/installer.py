@@ -563,6 +563,14 @@ def fetch_json(host, port, path, *, timeout=4, api_key=""):
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.load(response)
+    except urllib.error.HTTPError as error:
+        # Readiness includes diagnostic JSON with HTTP 503. Losing that body
+        # would turn a browser/network failure into an apparent missing login.
+        try:
+            with error:
+                return json.load(error)
+        except (OSError, ValueError):
+            return None
     except (OSError, ValueError, urllib.error.URLError):
         return None
 
@@ -608,7 +616,7 @@ def offer_login(chrome, profile, host, port, api_key):
         else:
             print("Browser is not ready for a login window. Use the printed command after checking status.")
             return
-        answer = input("Open the ChatBridge browser now to sign in to ChatGPT manually? [y/N]: ")
+        answer = input("Open the ChatBridge browser to inspect your current ChatGPT session manually? [y/N]: ")
         if answer.strip().lower() not in ("y", "yes"):
             return
         # The service can restart while the owner is deciding.
@@ -621,12 +629,64 @@ def offer_login(chrome, profile, host, port, api_key):
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        print("Requested a ChatBridge login window. Complete login manually, then check /ready.")
+        print("Requested a ChatBridge window. Check the session and sign in only if needed, then check /ready.")
         print("Opening the window does not verify authentication.")
     except (EOFError, KeyboardInterrupt):
         print("\nLogin window skipped; ChatBridge remains installed.")
     except OSError:
         print("Could not open the login window; ChatBridge remains installed. Use the printed command.")
+
+
+def check_started_login(chrome, profile, host, port, api_key):
+    """Wait for Chrome, then distinguish verified login from an inconclusive probe."""
+    print("Waiting for the managed Chrome to finish startup...", flush=True)
+    deadline = time.monotonic() + 40
+    while (remaining := deadline - time.monotonic()) > 0:
+        status = fetch_json(host, port, "/v1/system/status",
+                            timeout=min(1, remaining), api_key=api_key)
+        status = status if isinstance(status, dict) else {}
+        browser = status.get("browser")
+        browser = browser if isinstance(browser, dict) else {}
+        if status.get("transport") == "mock" or browser.get("mode") == "mock":
+            print("Mock-only transport; no ChatGPT login checked.")
+            return
+        if browser.get("mode") == "managed" and browser.get("state") == "running":
+            break
+        time.sleep(min(0.5, max(0, deadline - time.monotonic())))
+    else:
+        print("Browser readiness could not be verified. Check /v1/system/status and service.stderr.log.")
+        print("If Chrome is idle, send POST /v1/browser/wake, then wait for browser.state running.")
+        if api_key:
+            print("Use your configured Authorization header for wake and status checks.")
+        return
+
+    # The server allows 15s for navigation and 12s for the editor. A 4s HTTP
+    # timeout can expire while an authenticated page is still loading.
+    readiness = fetch_json(host, port, "/ready", timeout=35, api_key=api_key)
+    readiness = readiness if isinstance(readiness, dict) else {}
+    if readiness.get("cached") is True and readiness.get("ready") is False:
+        print("Cached readiness failure; waiting 20 seconds before one fresh check...", flush=True)
+        time.sleep(20)
+        readiness = fetch_json(host, port, "/ready", timeout=35, api_key=api_key)
+        readiness = readiness if isinstance(readiness, dict) else {}
+    if readiness.get("chatgpt_authenticated") is True:
+        print("ChatGPT authenticated" + (": /ready HTTP 200" if readiness.get("ready") else "; readiness still unavailable"))
+        return
+    if readiness.get("ready") is True and readiness.get("chatgpt_authenticated") is None:
+        print("Readiness did not verify ChatGPT authentication; check the selected transport.")
+        return
+    print("ChatGPT authentication could not be verified. This does not establish that your saved session is missing.")
+    print("/ready can also fail because Chrome or the network is unavailable; check /v1/system/status and service.stderr.log.")
+    print("Chrome runs in the background; no login window opens automatically.")
+    print("Before opening a window, first wake the managed Chrome: curl -fsS -X POST http://"
+          + host + ":" + str(port) + "/v1/browser/wake")
+    print("Wait until /v1/system/status reports browser.mode managed and browser.state running.")
+    print("To inspect the current session manually after that check, use:")
+    print(login_command(chrome, profile))
+    print("Then check: curl -i http://" + host + ":" + str(port) + "/ready")
+    if api_key:
+        print("Use your configured Authorization header for readiness and status checks.")
+    offer_login(chrome, profile, host, port, api_key)
 
 
 def do_install(args, *, update=False):
@@ -745,30 +805,10 @@ def do_install(args, *, update=False):
     print("Logs: " + str(state / "service.stderr.log"))
     if args.no_start:
         print("Start: launchctl bootstrap gui/$(id -u) " + str(plist))
-    elif not probe(
-        "127.0.0.1" if args.host == "0.0.0.0" else args.host,
-        args.port,
-        "/ready",
-        timeout=4,
-        api_key=args.api_key,
-    ):
-        print("Chrome runs in the background; no login window opens automatically.")
-        print("First wake the managed Chrome: curl -fsS -X POST http://"
-              + ("127.0.0.1" if args.host == "0.0.0.0" else args.host)
-              + ":" + str(args.port) + "/v1/browser/wake")
-        if args.api_key:
-            print("Use your configured Authorization header for wake and status checks.")
-        print("Then check /v1/system/status: browser.mode must be managed and browser.state running.")
-        print("Wait until then; do not open this profile while its managed Chrome is starting.")
-        print("NEXT STEP: only after that check, run this command in Terminal and sign in:")
-        print(login_command(chrome, state / "chrome-profile"))
-        print("It opens a window in the same managed profile; reuse it if login is needed again.")
-        print("Then check: curl -i http://127.0.0.1:" + str(args.port) + "/ready")
-        offer_login(chrome, state / "chrome-profile",
-                    "127.0.0.1" if args.host == "0.0.0.0" else args.host,
-                    args.port, args.api_key)
     else:
-        print("ChatGPT authenticated: /ready HTTP 200")
+        check_started_login(chrome, state / "chrome-profile",
+                            "127.0.0.1" if args.host == "0.0.0.0" else args.host,
+                            args.port, args.api_key)
     print("Chrome and user data remain yours. This is an unofficial web integration.")
 
 

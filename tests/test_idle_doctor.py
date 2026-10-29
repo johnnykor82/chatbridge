@@ -46,6 +46,9 @@ def test_later_login_instruction_wakes_custom_port_before_opening(
     tmp_path, monkeypatch, capsys, isolated  # noqa: F811
 ):
     monkeypatch.setattr(installer, "probe", lambda host, port, path="/health", **kw: path != "/ready")
+    monkeypatch.setattr(installer, "fetch_json", lambda host, port, path, **kw:
+                        {"browser": {"mode": "managed", "state": "running"}}
+                        if path == "/v1/system/status" else None)
     monkeypatch.setattr(installer, "start", lambda *a: None)
     monkeypatch.setattr(installer, "offer_login", lambda *a: None)
     installer.do_install(args(tmp_path, no_start=False, port=18844, api_key="NEVER_PRINT_THIS_KEY"))

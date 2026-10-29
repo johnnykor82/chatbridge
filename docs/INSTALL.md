@@ -40,7 +40,7 @@ The API binds to **127.0.0.1:8787**, concurrency defaults to 10 and reasoning ef
 
 ### First ChatGPT login
 
-Chrome starts **in the background**. If `/ready` is not HTTP 200, an interactive Terminal installation waits briefly for the managed browser and asks `Open the ChatBridge browser now to sign in to ChatGPT manually? [y/N]:`. Answer `y` or `yes` to open a window in that exact profile, then complete login yourself. The installer checks that the browser is running, visible, and using the expected profile before offering and again after consent. Opening a window does not verify authentication; check `/ready` after login.
+Chrome starts **in the background**. The installer waits for the managed browser and checks `/ready`; if the saved session is confirmed, it does not ask you to log in again. If the check is inconclusive, an interactive Terminal installation offers to open the managed profile to inspect the session. Answer `y` or `yes` and sign in only if needed. A network or browser failure can also make the check inconclusive. The installer checks that the browser is running, visible, and using the expected profile before offering and again after consent. Opening a window does not verify authentication; check `/ready` afterward.
 
 Declining, cancelling the prompt, or installing without an interactive terminal preserves the installation and printed manual command. `--dry-run` and `--no-start` never offer a login window; an already ready service needs no prompt. A window-opening failure also leaves the installed service in place. When Mac Control invokes this installer in Terminal, the same prompt is available through its inherited terminal input/output.
 
