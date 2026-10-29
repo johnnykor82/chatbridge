@@ -1,3 +1,8 @@
+## 0.2.0b7 — 2026-10-29
+
+- Select a compatible native uv and provide a checksum-verified GitHub fallback
+  when the official standalone installer cannot be downloaded.
+
 ## 0.2.0b6 — 2026-10-29
 
 - Offer the official prebuilt uv installer without invoking Homebrew.

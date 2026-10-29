@@ -38,7 +38,7 @@ For example, an application sends work to ChatBridge; ChatGPT can use Mac Contro
 
 ## Install on macOS
 
-Requires macOS, Google Chrome, Git and Python 3. If [uv](https://docs.astral.sh/uv/) is missing, the installer asks for permission to install it using the official uv standalone installer, even when Homebrew is present. It installs uv under `~/.local/bin` without changing shell configuration. It then provisions an isolated Python 3.13 runtime.
+Installation requires macOS, Google Chrome, Git and Python 3. The installer checks the Mac architecture and selects a matching uv binary. If [uv](https://docs.astral.sh/uv/) is missing, it asks permission to download uv from the official Astral installer; if `astral.sh` is unavailable, it automatically tries a checksum-verified official uv release from GitHub. Homebrew is not required or used. uv is installed in a ChatBridge-managed directory without changing shell configuration, then provisions an isolated Python 3.13 runtime. If both download sources are unavailable, the installer reports the error and provides manual installation instructions.
 
 ```bash
 git clone https://github.com/johnnykor82/chatbridge.git

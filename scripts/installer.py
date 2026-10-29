@@ -10,15 +10,19 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
+import platform
 import plistlib
 import re
 import shlex
 import shutil
 import socket
+import struct
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.error
@@ -112,46 +116,176 @@ def require_os():
         raise InstallationError("Do not use sudo. Install a per-user LaunchAgent.")
 
 
+UV_INSTALL_URL = "https://astral.sh/uv/install.sh"
+# Pinned official release digests from the GitHub release API. Never trust a
+# checksum downloaded alongside the archive (ASVS V15.2 dependency integrity).
+UV_RELEASE_VERSION = "0.13.6"
+UV_RELEASE_SHA256 = {
+    "aarch64-apple-darwin": "60fbd5c8a1ed681845eea28d9d622fcde03c51e91a43465b64a1e17db1ed3472",
+    "x86_64-apple-darwin": "63ba17fdda55ad1a230d4b37fc6017ffa10c23688c83818bd3bfdf914c652a02",
+}
+UV_ARCHIVE_LIMIT = 64 * 1024 * 1024
+UV_BINARY_LIMIT = 128 * 1024 * 1024
+
+
+def uv_target():
+    """Find the hardware architecture, including Python running under Rosetta."""
+    machine = platform.machine().lower()
+    if machine in ("arm64", "aarch64"):
+        return "aarch64-apple-darwin"
+    if machine == "x86_64":
+        try:
+            result = subprocess.run(
+                ["/usr/sbin/sysctl", "-n", "hw.optional.arm64"],
+                capture_output=True, text=True, check=False, timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip() == "1":
+                return "aarch64-apple-darwin"
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        return "x86_64-apple-darwin"
+    raise InstallationError("Unsupported macOS architecture: " + machine)
+
+
+def uv_install_path(target):
+    return app_home() / "tools" / "uv" / target / "uv"
+
+
+def uv_matches_target(path, target):
+    """Read Mach-O headers without executing a foreign-architecture program."""
+    cpu = 0x0100000C if target == "aarch64-apple-darwin" else 0x01000007
+    try:
+        with Path(path).open("rb") as source:
+            header = source.read(4096)
+    except OSError:
+        return False
+    if len(header) < 8:
+        return False
+    magic = header[:4]
+    if magic in (b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf"):
+        endian = "<" if magic == b"\xcf\xfa\xed\xfe" else ">"
+        return struct.unpack(endian + "I", header[4:8])[0] == cpu
+    fat = {
+        b"\xca\xfe\xba\xbe": (">", 20), b"\xbe\xba\xfe\xca": ("<", 20),
+        b"\xca\xfe\xba\xbf": (">", 32), b"\xbf\xba\xfe\xca": ("<", 32),
+    }
+    if magic not in fat:
+        return False
+    endian, size = fat[magic]
+    count = struct.unpack(endian + "I", header[4:8])[0]
+    if not 1 <= count <= 32 or len(header) < 8 + count * size:
+        return False
+    return any(
+        struct.unpack_from(endian + "I", header, 8 + index * size)[0] == cpu
+        for index in range(count)
+    )
+
+
 def find_uv():
-    """Locate uv even if its installer has not updated the current shell PATH."""
-    found = shutil.which("uv")
-    if found:
-        return found
-    for candidate in (
-        Path.home() / ".local/bin/uv",
-        Path("/opt/homebrew/bin/uv"),
-        Path("/usr/local/bin/uv"),
-    ):
-        if candidate.is_file() and os.access(candidate, os.X_OK):
+    """Skip Intel-only uv on Apple Silicon, including when it shadows PATH."""
+    target = uv_target()
+    candidates = [Path(folder) / "uv" for folder in os.get_exec_path()]
+    candidates.extend((
+        uv_install_path(target), Path.home() / ".local/bin/uv",
+        Path("/opt/homebrew/bin/uv"), Path("/usr/local/bin/uv"),
+    ))
+    for candidate in candidates:
+        if (candidate.is_file() and os.access(candidate, os.X_OK)
+                and uv_matches_target(candidate, target)):
             return str(candidate)
     return None
 
 
-UV_INSTALL_URL = "https://astral.sh/uv/install.sh"
+def _publish_uv(source, target):
+    if not uv_matches_target(source, target):
+        raise InstallationError("Downloaded uv does not support the native macOS architecture")
+    destination = uv_install_path(target)
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Link an already complete file atomically. An existing file or symlink is
+    # never overwritten, and an interrupted copy cannot become discoverable.
+    with tempfile.TemporaryDirectory(prefix=".uv-", dir=destination.parent) as folder:
+        staged = Path(folder) / "uv"
+        shutil.copyfile(source, staged)
+        staged.chmod(0o755)
+        try:
+            os.link(staged, destination)
+        except FileExistsError as exc:
+            raise InstallationError("Refusing to overwrite existing uv: " + str(destination)) from exc
+
+
+def _install_uv_release(target):
+    """Verify a pinned GitHub tarball and read only the expected regular file."""
+    root = "uv-" + target
+    url = ("https://github.com/astral-sh/uv/releases/download/"
+           + UV_RELEASE_VERSION + "/" + root + ".tar.gz")
+    print("Downloading verified uv release: " + url, flush=True)
+    with urllib.request.urlopen(url, timeout=60) as response:
+        archive = response.read(UV_ARCHIVE_LIMIT + 1)
+    if len(archive) > UV_ARCHIVE_LIMIT:
+        raise InstallationError("uv archive exceeds the download size limit")
+    if hashlib.sha256(archive).hexdigest() != UV_RELEASE_SHA256[target]:
+        raise InstallationError("uv archive SHA256 verification failed")
+    with tempfile.TemporaryDirectory(prefix="chatbridge-uv-") as folder:
+        source = Path(folder) / "uv"
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as bundle:
+            seen = set()
+            for member in bundle:
+                # No extractall: forbid traversal, links, duplicates, special
+                # files and unexpected entries before writing anything.
+                if member.name == root and member.isdir() and member.name not in seen:
+                    seen.add(member.name)
+                    continue
+                if (member.name not in (root + "/uv", root + "/uvx")
+                        or member.name in seen or not member.isfile()
+                        or not 0 < member.size <= UV_BINARY_LIMIT):
+                    raise InstallationError("Unsafe or unexpected uv archive member")
+                seen.add(member.name)
+                if member.name == root + "/uv":
+                    with bundle.extractfile(member) as binary:
+                        source.write_bytes(binary.read(UV_BINARY_LIMIT + 1))
+            if not source.is_file():
+                raise InstallationError("uv archive is missing the uv executable")
+        _publish_uv(source, target)
 
 
 def _install_uv_standalone():
-    """Download the official uv script and run it only after an explicit yes.
-
-    The remote script is kept in a private temporary file for inspection and
-    is never piped straight from the network into a shell. Do not edit PATH
-    or the user's shell configuration behind their back.
-    """
+    """Stage the official installer, falling back to a pinned verified binary."""
+    target = uv_target()
     print("Downloading official uv installer: " + UV_INSTALL_URL, flush=True)
     try:
-        with urllib.request.urlopen(UV_INSTALL_URL, timeout=30) as response:
-            script = response.read(512 * 1024 + 1)
+        try:
+            with urllib.request.urlopen(UV_INSTALL_URL, timeout=30) as response:
+                script = response.read(512 * 1024 + 1)
+        except (OSError, urllib.error.URLError, TimeoutError):
+            print("Official installer download failed; trying the verified GitHub release.")
+            _install_uv_release(target)
+            return
         if not script or len(script) > 512 * 1024 or b"\x00" in script:
             raise InstallationError("Official uv installer download was empty or unexpectedly large")
         with tempfile.TemporaryDirectory(prefix="chatbridge-uv-") as folder:
             path = Path(folder) / "install.sh"
             path.write_bytes(script)
-            run_env = os.environ.copy()
+            bin_dir = Path(folder) / "bin"
+            # Installer-specific overrides must not redirect a staged install
+            # or its downloads through user-defined mirrors.
+            run_env = {key: value for key, value in os.environ.items() if not key.startswith("UV_")}
             run_env["UV_NO_MODIFY_PATH"] = "1"
-            run_env["UV_INSTALL_DIR"] = str(Path.home() / ".local/bin")
-            subprocess.run(["/bin/sh", str(path)], check=True, env=run_env)
+            run_env["UV_INSTALL_DIR"] = str(bin_dir)
+            # Unmanaged mode also suppresses the installation receipt and
+            # self-updater, both of which would otherwise escape staging.
+            run_env["UV_UNMANAGED_INSTALL"] = str(bin_dir)
+            command = ["/bin/sh", str(path)]
+            if target == "aarch64-apple-darwin":
+                command = ["/usr/bin/arch", "-arm64"] + command
+            try:
+                subprocess.run(command, check=True, env=run_env)
+            except subprocess.CalledProcessError:
+                print("Official installer failed; trying the verified GitHub release.")
+                _install_uv_release(target)
+                return
+            _publish_uv(bin_dir / "uv", target)
     except (OSError, urllib.error.URLError, TimeoutError, ValueError,
-            subprocess.CalledProcessError) as exc:
+            tarfile.TarError, subprocess.CalledProcessError) as exc:
         raise InstallationError(
             "Could not install uv using the official installer: " + str(exc)
             + "\nManual installation: https://docs.astral.sh/uv/getting-started/installation/"
@@ -167,7 +301,7 @@ def require_uv():
     print("The official standalone installer can be used, without Homebrew:")
     print("  " + UV_INSTALL_URL)
     print("The installer script will be downloaded and executed as your user.")
-    print("uv binaries will be installed under " + str(Path.home() / ".local/bin"))
+    print("uv will be installed at " + str(uv_install_path(uv_target())))
     print("Your shell configuration will not be modified.")
 
     if not sys.stdin.isatty():
