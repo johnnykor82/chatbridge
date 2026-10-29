@@ -46,7 +46,7 @@ cd chatbridge
 ./install.sh
 ```
 
-The installer creates an independent application directory, private Chrome profile and per-user LaunchAgent with automatic startup and restart. Chrome starts **in the background without a login window**. First confirm `/v1/system/status` shows `browser.mode=managed` and `browser.state=running`. Then run the command printed by the installer (or `./install.sh doctor`) to open the correct managed profile, then **sign into ChatGPT once**. Mac Control and a pre-existing CDP browser are not needed.
+The installer creates an independent application directory, private Chrome profile and per-user LaunchAgent with automatic startup and restart. Chrome starts **in the background**. If ChatGPT is not ready, an interactive Terminal installation waits for the managed profile and offers to open its login window (`[y/N]`). Answer `y`, then **sign into ChatGPT manually** in that window. Declining or installing without a terminal leaves the service installed and prints a command for later login. Before running that command (also available from `./install.sh doctor`), confirm `/v1/system/status` shows `browser.mode=managed` and `browser.state=running`. Mac Control and a pre-existing CDP browser are not needed.
 
 Default API: **http://127.0.0.1:8787**.
 

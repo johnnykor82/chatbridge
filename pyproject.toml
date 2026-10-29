@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chatbridge-gateway"
-version = "0.2.0b8"
+version = "0.2.0b9"
 description = "Multi-session local HTTP gateway to user-authorized ChatGPT web conversations"
 requires-python = ">=3.11"
 license = "MIT"

@@ -40,7 +40,11 @@ The API binds to **127.0.0.1:8787**, concurrency defaults to 10 and reasoning ef
 
 ### First ChatGPT login
 
-Chrome starts **in the background without a login window**. First check `curl http://127.0.0.1:8787/v1/system/status` and wait until `browser.mode` is `managed` and `browser.state` is `running`. HTTP `/health` alone is insufficient: Chrome may still be starting. Do not run the window-opening command before this check, as it could race the supervisor for ownership of the profile. Then execute the command printed by the installer in Terminal and sign in normally to ChatGPT. For the default Chrome application and state directory, the command is:
+Chrome starts **in the background**. If `/ready` is not HTTP 200, an interactive Terminal installation waits briefly for the managed browser and asks `Open the ChatBridge browser now to sign in to ChatGPT manually? [y/N]:`. Answer `y` or `yes` to open a window in that exact profile, then complete login yourself. The installer checks that the browser is running, visible, and using the expected profile before offering and again after consent. Opening a window does not verify authentication; check `/ready` after login.
+
+Declining, cancelling the prompt, or installing without an interactive terminal preserves the installation and printed manual command. `--dry-run` and `--no-start` never offer a login window; an already ready service needs no prompt. A window-opening failure also leaves the installed service in place. When Mac Control invokes this installer in Terminal, the same prompt is available through its inherited terminal input/output.
+
+For later manual login, first check `curl http://127.0.0.1:8787/v1/system/status` and wait until `browser.mode` is `managed` and `browser.state` is `running`. HTTP `/health` alone is insufficient: Chrome may still be starting. Do not run the window-opening command before this check, as it could race the supervisor for ownership of the profile. Then execute the command printed by the installer in Terminal and sign in normally to ChatGPT. For the default Chrome application and state directory, the command is:
 
 ```sh
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \

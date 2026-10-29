@@ -13,6 +13,7 @@ MODULE = Path(__file__).resolve().parents[1] / "scripts" / "installer.py"
 SPEC = importlib.util.spec_from_file_location("standalone_installer", MODULE)
 installer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(installer)
+LAUNCHCTL_IS_LOADED = installer.is_loaded
 
 
 def args(tmp, *, command="install", **kwargs):
@@ -363,3 +364,163 @@ def test_doctor_preserves_mock_mode_without_login_command(
     result = json.loads(capsys.readouterr().out)
     assert result["next_action"] == "Mock-only transport; no ChatGPT login checked"
     assert "login_command" not in result
+
+
+def missing_service(label):
+    return SimpleNamespace(
+        returncode=113, stdout="",
+        stderr='Bad request.\nCould not find service "' + label
+        + '" in domain for user gui: ' + str(installer.os.getuid()) + '\n',
+    )
+
+
+def test_launchctl_print_not_running_still_means_registered(monkeypatch):
+    monkeypatch.setattr(installer, "run", lambda *a, **kw: SimpleNamespace(
+        returncode=0, stdout="state = not running", stderr=""
+    ))
+    assert installer.is_loaded("net.chatbridge.test-unit") is True
+
+
+@pytest.mark.parametrize("result", [
+    SimpleNamespace(returncode=1, stdout="", stderr="Operation not permitted"),
+    SimpleNamespace(returncode=113, stdout="", stderr="Could not find domain for user gui: 501"),
+    missing_service("net.chatbridge.some-other-service"),
+])
+def test_launchctl_print_unknown_error_is_not_treated_as_unloaded(monkeypatch, result):
+    monkeypatch.setattr(installer, "run", lambda *a, **kw: result)
+    with pytest.raises(installer.InstallationError, match="Cannot determine"):
+        installer.is_loaded("net.chatbridge.test-unit")
+
+
+def test_start_waits_for_delayed_bootout_registration_removal(monkeypatch, tmp_path):
+    label = "net.chatbridge.test-unit"
+    clock = [0.0]
+    bootout_finished = [False]
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append((list(map(str, argv)), clock[0]))
+        if argv[1] == "print":
+            if bootout_finished[0] and clock[0] >= 0.35:
+                return missing_service(label)
+            return SimpleNamespace(returncode=0, stdout="state = not running", stderr="")
+        if argv[1] == "bootout":
+            bootout_finished[0] = True
+        if argv[1] == "bootstrap":
+            assert clock[0] >= 0.35, "bootstrap raced launchd deregistration"
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(installer, "run", fake_run)
+    monkeypatch.setattr(installer.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(installer.time, "sleep", lambda delay: clock.__setitem__(0, clock[0] + delay))
+    installer.stop(label)
+    installer.start(label, tmp_path / "service.plist")
+    assert len([argv for argv, _ in calls if argv[1] == "bootstrap"]) == 1
+    assert clock[0] < 1
+
+
+def test_start_timeout_never_enables_or_bootstraps_a_registered_service(monkeypatch, tmp_path):
+    clock = [0.0]
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=0, stdout="state = not running", stderr="")
+
+    monkeypatch.setattr(installer, "run", fake_run)
+    monkeypatch.setattr(installer.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(installer.time, "sleep", lambda delay: clock.__setitem__(0, clock[0] + delay))
+    with pytest.raises(installer.InstallationError, match="Timed out.*unload"):
+        installer.start("net.chatbridge.test-unit", tmp_path / "service.plist")
+    assert calls and all(argv[1] == "print" for argv in calls)
+    assert clock[0] <= 11
+
+
+def test_upgrade_stop_timeout_keeps_old_plist(tmp_path, monkeypatch, isolated):
+    setting = args(tmp_path)
+    installer.do_install(setting)
+    plist = isolated / (setting.label + ".plist")
+    original = plist.read_bytes()
+    monkeypatch.setattr(installer, "is_loaded", lambda label: True)
+    monkeypatch.setattr(installer, "stop", lambda label: (_ for _ in ()).throw(
+        installer.InstallationError("Timed out waiting for unload")
+    ))
+    monkeypatch.setattr(installer, "start", lambda *a: pytest.fail("must not bootstrap"))
+    with pytest.raises(installer.InstallationError, match="Timed out"):
+        installer.do_install(args(tmp_path, command="upgrade", no_start=False), update=True)
+    assert plist.read_bytes() == original
+
+
+def test_rollback_stop_timeout_restores_old_plist_without_bootstrap(tmp_path, monkeypatch, isolated):
+    setting = args(tmp_path)
+    installer.do_install(setting)
+    plist = isolated / (setting.label + ".plist")
+    original = plist.read_bytes()
+    monkeypatch.setattr(installer, "is_loaded", lambda label: True)
+    stops = []
+    starts = []
+
+    def stop(label):
+        stops.append(label)
+        if len(stops) == 2:
+            raise installer.InstallationError("Timed out waiting for unload")
+
+    def start(label, path):
+        starts.append(label)
+        raise RuntimeError("new service failed")
+
+    monkeypatch.setattr(installer, "stop", stop)
+    monkeypatch.setattr(installer, "start", start)
+    with pytest.raises(installer.InstallationError, match="Timed out"):
+        installer.do_install(args(tmp_path, command="upgrade", no_start=False, port=18999), update=True)
+    assert plist.read_bytes() == original
+    assert len(starts) == 1
+
+
+def test_launchctl_print_timeout_fails_closed(monkeypatch):
+    def timed_out(argv, **kwargs):
+        assert kwargs["timeout"] == 1
+        raise installer.subprocess.TimeoutExpired(argv, kwargs["timeout"])
+
+    monkeypatch.setattr(installer, "run", timed_out)
+    with pytest.raises(installer.InstallationError, match="Cannot determine.*timed out"):
+        installer.start("net.chatbridge.test-unit", Path("unused.plist"))
+
+
+def test_upgrade_rollback_waits_for_partial_bootstrap_to_unload(
+    tmp_path, monkeypatch, isolated
+):
+    setting = args(tmp_path)
+    installer.do_install(setting)
+    plist = isolated / (setting.label + ".plist")
+    original = plist.read_bytes()
+    clock = [0.0]
+    removal_at = [None]
+    bootstrap_times = []
+
+    def fake_run(argv, **kwargs):
+        if argv[1] == "print":
+            if removal_at[0] is not None and clock[0] >= removal_at[0]:
+                return missing_service(setting.label)
+            return SimpleNamespace(returncode=0, stdout="state = not running", stderr="")
+        if argv[1] == "bootout":
+            removal_at[0] = clock[0] + 0.35
+        if argv[1] == "bootstrap":
+            bootstrap_times.append(clock[0])
+            assert removal_at[0] is not None and clock[0] >= removal_at[0]
+            removal_at[0] = None  # Simulate a partly registered failed launch.
+            if len(bootstrap_times) == 1:
+                raise installer.subprocess.CalledProcessError(5, argv)
+            assert plist.read_bytes() == original
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(installer, "is_loaded", LAUNCHCTL_IS_LOADED)
+    monkeypatch.setattr(installer, "run", fake_run)
+    monkeypatch.setattr(installer.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(installer.time, "sleep", lambda delay: clock.__setitem__(0, clock[0] + delay))
+    with pytest.raises(installer.subprocess.CalledProcessError):
+        installer.do_install(args(tmp_path, command="upgrade", no_start=False, port=18999), update=True)
+    assert len(bootstrap_times) == 2
+    assert bootstrap_times[0] >= 0.35
+    assert bootstrap_times[1] - bootstrap_times[0] >= 0.35
+    assert plist.read_bytes() == original

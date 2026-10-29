@@ -88,13 +88,14 @@ def agent_directory():
     return Path.home() / "Library" / "LaunchAgents"
 
 
-def run(args, *, check=True, capture=False):
+def run(args, *, check=True, capture=False, timeout=None):
     return subprocess.run(
         list(map(str, args)),
         check=check,
         text=True,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
+        timeout=timeout,
     )
 
 
@@ -505,16 +506,42 @@ def label_domain(label):
 
 
 def is_loaded(label):
-    status = run(["launchctl", "print", label_domain(label)], check=False, capture=True)
-    return status.returncode == 0
+    try:
+        status = run(
+            ["launchctl", "print", label_domain(label)], check=False, capture=True, timeout=1
+        )
+    except subprocess.TimeoutExpired as error:
+        raise InstallationError("Cannot determine LaunchAgent registration: launchctl print timed out") from error
+    if status.returncode == 0:
+        # Even "state = not running" is a registered job and blocks bootstrap.
+        return True
+    missing = (
+        'Could not find service "' + label + '" in domain for user gui: ' + str(os.getuid())
+    )
+    if status.returncode == 113 and missing in (status.stderr or "").splitlines():
+        return False
+    raise InstallationError("Cannot determine LaunchAgent registration for " + label)
+
+
+def wait_for_unloaded(label):
+    # bootout can return before launchd removes the service registration. Bound
+    # the wait to 10 seconds plus at most one 1-second print operation.
+    deadline = time.monotonic() + 10
+    while is_loaded(label):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise InstallationError("Timed out waiting for LaunchAgent to unload: " + label)
+        time.sleep(min(0.1, remaining))
 
 
 def stop(label):
     if is_loaded(label):
         run(["launchctl", "bootout", label_domain(label)])
+    wait_for_unloaded(label)
 
 
 def start(label, plist):
+    wait_for_unloaded(label)
     run(["launchctl", "enable", label_domain(label)])
     run(["launchctl", "bootstrap", "gui/" + str(os.getuid()), plist])
 
@@ -553,6 +580,52 @@ def login_command(chrome, profile):
         str(chrome), "--user-data-dir=" + str(profile),
         "--new-window", "https://chatgpt.com/",
     ])
+
+
+def offer_login(chrome, profile, host, port, api_key):
+    """Offer an optional window only after the managed profile is ready."""
+    if not sys.stdin.isatty():
+        return
+
+    def browser_ready():
+        status = fetch_json(host, port, "/v1/system/status", timeout=1, api_key=api_key)
+        browser = status.get("browser", {}) if isinstance(status, dict) else {}
+        return (
+            isinstance(browser, dict)
+            and browser.get("mode") == "managed"
+            and browser.get("state") == "running"
+            and browser.get("headless") is False
+            and browser.get("profile") == str(profile)
+        )
+
+    print("Waiting for the managed Chrome profile before offering manual login...", flush=True)
+    try:
+        for _ in range(20):
+            if browser_ready():
+                break
+            time.sleep(0.5)
+        else:
+            print("Browser is not ready for a login window. Use the printed command after checking status.")
+            return
+        answer = input("Open the ChatBridge browser now to sign in to ChatGPT manually? [y/N]: ")
+        if answer.strip().lower() not in ("y", "yes"):
+            return
+        # The service can restart while the owner is deciding.
+        if not browser_ready():
+            print("Browser state changed. Use the printed command after checking status again.")
+            return
+        # Never wait for or kill Chrome: it might remain alive as the browser owner.
+        subprocess.Popen(
+            shlex.split(login_command(chrome, profile)),
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        print("Requested a ChatBridge login window. Complete login manually, then check /ready.")
+        print("Opening the window does not verify authentication.")
+    except (EOFError, KeyboardInterrupt):
+        print("\nLogin window skipped; ChatBridge remains installed.")
+    except OSError:
+        print("Could not open the login window; ChatBridge remains installed. Use the printed command.")
 
 
 def do_install(args, *, update=False):
@@ -652,14 +725,18 @@ def do_install(args, *, update=False):
             else:
                 raise InstallationError("Service did not reach /health after start")
         except Exception:
-            stop(args.label)
-            if backup:
-                shutil.copy2(backup, plist)
-                plist.chmod(0o600)
-                if previous_loaded:
-                    start(args.label, plist)
-            else:
-                plist.unlink(missing_ok=True)
+            try:
+                stop(args.label)
+            finally:
+                # Restore the durable configuration even if unloading fails.
+                # The exception then prevents an unsafe rollback bootstrap.
+                if backup:
+                    shutil.copy2(backup, plist)
+                    plist.chmod(0o600)
+                else:
+                    plist.unlink(missing_ok=True)
+            if backup and previous_loaded:
+                start(args.label, plist)
             raise
     print("Installed LaunchAgent: " + str(plist))
     print("HTTP: http://" + args.host + ":" + str(args.port))
@@ -681,6 +758,9 @@ def do_install(args, *, update=False):
         print(login_command(chrome, state / "chrome-profile"))
         print("It opens a window in the same managed profile; reuse it if login is needed again.")
         print("Then check: curl -i http://127.0.0.1:" + str(args.port) + "/ready")
+        offer_login(chrome, state / "chrome-profile",
+                    "127.0.0.1" if args.host == "0.0.0.0" else args.host,
+                    args.port, args.api_key)
     else:
         print("ChatGPT authenticated: /ready HTTP 200")
     print("Chrome and user data remain yours. This is an unofficial web integration.")

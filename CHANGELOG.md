@@ -1,3 +1,8 @@
+## 0.2.0b9 — 2026-10-29
+
+- Wait for launchd to finish unloading ChatBridge before restarting the service during upgrades.
+- Offer to open the managed Chrome profile for manual ChatGPT login after installation.
+
 ## 0.2.0b8 — 2026-10-29
 
 - Fix the offline bootstrap test on Intel Linux CI.
