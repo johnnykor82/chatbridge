@@ -251,3 +251,111 @@ def test_runtime_manifest_covers_all_package_modules():
     root = MODULE.parents[1]
     modules = {str(path.relative_to(root)) for path in (root / "src/chatbridge").glob("*.py")}
     assert modules == {name for name in installer.MANIFEST if name.startswith("src/")}
+
+
+def test_login_command_quotes_exact_paths_and_is_reusable():
+    import shlex
+
+    chrome = "/Applications/Custom Chrome's App.app/Contents/MacOS/Chrome"
+    profile = "/Users/example/State With Spaces/$literal;not-a-command/chrome-profile"
+    command = installer.login_command(chrome, profile)
+    assert shlex.split(command) == [
+        chrome, "--user-data-dir=" + profile, "--new-window", "https://chatgpt.com/"
+    ]
+    assert installer.login_command(chrome, profile) == command
+    assert "remote-debugging" not in command
+
+
+def test_doctor_login_command_uses_installed_custom_paths_after_upgrade(
+    tmp_path, monkeypatch, capsys, isolated
+):
+    import shlex
+
+    chrome = tmp_path / "Custom Chrome App" / "Chrome's executable"
+    chrome.parent.mkdir()
+    chrome.write_text("fake")
+    first = args(tmp_path, chrome_path=str(chrome), state_dir=str(tmp_path / "Custom State"),
+                 api_key="NEVER_PRINT_THIS_KEY")
+    installer.do_install(first)
+    installer.do_install(args(tmp_path, command="upgrade", prefix=None, state_dir=None,
+                              chrome_path=None), update=True)
+    capsys.readouterr()
+    monkeypatch.setattr(installer, "probe", lambda *a, **kw: True)
+    requested_paths = []
+
+    def fetch(host, port, path, **kwargs):
+        requested_paths.append(path)
+        if path == "/v1/system/status":
+            return {"transport": "browser", "browser": {"mode": "managed", "state": "running"}}
+        assert path == "/ready"
+        return None  # A fresh profile's readiness probe can time out before login.
+
+    monkeypatch.setattr(installer, "fetch_json", fetch)
+    monkeypatch.setattr(installer, "is_loaded", lambda label: True)
+    installer.do_status(args(tmp_path, command="doctor"), doctor=True)
+    printed = capsys.readouterr().out
+    result = json.loads(printed)
+    assert shlex.split(result["login_command"]) == [
+        str(chrome.resolve()),
+        "--user-data-dir=" + str((tmp_path / "Custom State/chrome-profile").resolve()),
+        "--new-window", "https://chatgpt.com/",
+    ]
+    assert "background" in result["next_action"]
+    assert requested_paths == ["/v1/system/status", "/ready"]
+    assert "NEVER_PRINT_THIS_KEY" not in printed
+
+
+def test_install_prints_login_command_without_opening_window(
+    tmp_path, monkeypatch, capsys, isolated
+):
+    monkeypatch.setattr(installer, "probe", lambda host, port, path="/health", **kw: path != "/ready")
+    starts = []
+    monkeypatch.setattr(installer, "start", lambda label, plist: starts.append(label))
+    setting = args(tmp_path, no_start=False, api_key="NEVER_PRINT_THIS_KEY")
+    installer.do_install(setting)
+    printed = capsys.readouterr().out
+    assert installer.login_command(tmp_path / "fake-chrome", tmp_path / "data/chrome-profile") in printed
+    assert "no login window opens automatically" in printed
+    assert "browser.state running" in printed
+    assert "NEVER_PRINT_THIS_KEY" not in printed
+    assert starts == [setting.label]
+
+
+@pytest.mark.parametrize("browser", [
+    {"mode": "managed", "state": "starting"},
+    {"mode": "managed", "state": "unavailable"},
+    {"mode": "external", "state": "running"},
+    {},
+])
+def test_doctor_does_not_offer_profile_open_unless_managed_browser_running(
+    tmp_path, monkeypatch, capsys, isolated, browser
+):
+    installer.do_install(args(tmp_path))
+    capsys.readouterr()
+    monkeypatch.setattr(installer, "probe", lambda *a, **kw: True)
+    monkeypatch.setattr(installer, "fetch_json", lambda host, port, path, **kw: (
+        {"transport": "browser", "browser": browser} if path == "/v1/system/status" else None
+    ))
+    monkeypatch.setattr(installer, "is_loaded", lambda label: True)
+    installer.do_status(args(tmp_path), doctor=True)
+    result = json.loads(capsys.readouterr().out)
+    assert "login_command" not in result
+    assert "Wait for" in result["next_action"]
+
+
+@pytest.mark.parametrize("readiness", [None, {"ready": True, "chatgpt_authenticated": None}])
+def test_doctor_preserves_mock_mode_without_login_command(
+    tmp_path, monkeypatch, capsys, isolated, readiness
+):
+    installer.do_install(args(tmp_path))
+    capsys.readouterr()
+    monkeypatch.setattr(installer, "probe", lambda *a, **kw: True)
+    monkeypatch.setattr(installer, "fetch_json", lambda host, port, path, **kw: (
+        {"transport": "mock", "browser": {"mode": "mock", "state": "ready"}}
+        if path == "/v1/system/status" else readiness
+    ))
+    monkeypatch.setattr(installer, "is_loaded", lambda label: True)
+    installer.do_status(args(tmp_path), doctor=True)
+    result = json.loads(capsys.readouterr().out)
+    assert result["next_action"] == "Mock-only transport; no ChatGPT login checked"
+    assert "login_command" not in result

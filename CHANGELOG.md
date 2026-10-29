@@ -1,3 +1,9 @@
+## 0.2.0b4 — 2026-10-29
+
+- Explain first login for the background Chrome profile and show the exact
+  shell-quoted command for the installed paths.
+- Make doctor inspect the browser state even when the readiness probe times out.
+
 ## 0.2.0b3 — 2026-10-29
 
 - Limit the installer to explicit runtime files and use its managed lifecycle for legacy entry points.

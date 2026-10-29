@@ -17,7 +17,7 @@ ChatBridge is a standalone macOS HTTP gateway for a user-authorized ChatGPT web 
 
 **Requirements:** macOS, Chrome, Git, Python 3, uv, and a valid ChatGPT login. This is unofficial tooling, not an OpenAI API implementation; web UI and account limits may change behavior.
 
-**Beta 3:** the installer copies an explicit runtime file list and browser-origin protections preserve keyless access for local clients. If `uv` is missing, first-run installation offers to install it with explicit approval.
+**Beta 4:** first-run instructions explain how to open the managed Chrome profile for ChatGPT login. The installer and doctor display the correct command for the installed profile. Keyless local access remains the default.
 
 **Beta limitations:** clean-Mac installation and login, cold-reboot acceptance, long-running tool flows and source-provenance review remain unverified. This release is experimental, not production-ready.
 
@@ -38,7 +38,7 @@ ChatBridge — самостоятельный HTTP-сервис для прил�
 
 **Требования:** macOS, Chrome, Git, Python 3, uv и авторизация ChatGPT. Это неофициальный проект, не реализация OpenAI API; изменения сайта и ограничения аккаунта могут влиять на работу.
 
-**Beta 3:** установщик копирует только перечисленные рабочие файлы, а защита браузерных запросов сохраняет локальный доступ без ключа. Если `uv` отсутствует, установщик предлагает поставить его с подтверждением пользователя.
+**Beta 4:** инструкция первого запуска объясняет, как открыть управляемый Chrome-профиль и войти в ChatGPT. Установщик и doctor выводят команду для установленного профиля. Локальный доступ по умолчанию работает без ключа.
 
 **Ограничения Beta:** ещё нужны тест чистой установки и входа на другом Mac, проверка после перезагрузки, длительных сценариев и аудит публичных исходников. До их завершения нельзя представлять версию как промышленно готовую.
 

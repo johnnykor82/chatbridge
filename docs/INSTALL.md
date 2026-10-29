@@ -39,7 +39,17 @@ The API binds to **127.0.0.1:8787**, concurrency defaults to 10 and reasoning ef
 
 ### First ChatGPT login
 
-The installer launches a **new Chrome window with a private profile**. Sign in normally to ChatGPT in that window. It does not copy account tokens or cookies from another browser.
+Chrome starts **in the background without a login window**. First check `curl http://127.0.0.1:8787/v1/system/status` and wait until `browser.mode` is `managed` and `browser.state` is `running`. HTTP `/health` alone is insufficient: Chrome may still be starting. Do not run the window-opening command before this check, as it could race the supervisor for ownership of the profile. Then execute the command printed by the installer in Terminal and sign in normally to ChatGPT. For the default Chrome application and state directory, the command is:
+
+```sh
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --user-data-dir="$HOME/.chatbridge/chrome-profile" \
+  --new-window "https://chatgpt.com/"
+```
+
+This asks the already running Chrome for that exact profile to open a window. It does not copy cookies or account tokens from another browser. Reuse the command whenever login is needed again. Do not use an ordinary Chrome window belonging to a different profile.
+
+For custom `--state-dir` or `--chrome-path`, use the shell-quoted command printed by the installer, or the `login_command` value from `./install.sh doctor` (with `--label YOUR_LABEL` for a custom service). Doctor reads the installed paths, including after an upgrade; copy the decoded command value, without JSON quotation/escaping. No API key is included in this command. If API authentication is enabled, use your existing authenticated client for the status check; the browser-opening command itself needs no token. `/ready` creates and closes its own temporary probe tab; it is not a persistent login window.
 
 ```sh
 curl http://127.0.0.1:8787/health

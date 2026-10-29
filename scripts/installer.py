@@ -14,6 +14,7 @@ import json
 import os
 import plistlib
 import re
+import shlex
 import shutil
 import socket
 import subprocess
@@ -429,6 +430,14 @@ def busy(host, port):
         return False
 
 
+def login_command(chrome, profile):
+    """Open a window in the existing managed profile, without exposing credentials."""
+    return shlex.join([
+        str(chrome), "--user-data-dir=" + str(profile),
+        "--new-window", "https://chatgpt.com/",
+    ])
+
+
 def do_install(args, *, update=False):
     require_os()
     # Read the existing plist *before* resolving upgrade defaults. Preserve
@@ -548,7 +557,12 @@ def do_install(args, *, update=False):
         timeout=4,
         api_key=args.api_key,
     ):
-        print("NEXT STEP: sign in to ChatGPT in the new dedicated Chrome window.")
+        print("Chrome runs in the background; no login window opens automatically.")
+        print("First check /v1/system/status: browser.mode must be managed and browser.state running.")
+        print("Wait until then; do not open this profile while its managed Chrome is starting.")
+        print("NEXT STEP: only after that check, run this command in Terminal and sign in:")
+        print(login_command(chrome, state / "chrome-profile"))
+        print("It opens a window in the same managed profile; reuse it if login is needed again.")
         print("Then check: curl -i http://127.0.0.1:" + str(args.port) + "/ready")
     else:
         print("ChatGPT authenticated: /ready HTTP 200")
@@ -620,6 +634,11 @@ def do_status(args, *, doctor=False):
     port = int(env.get("CHATBRIDGE_PORT", "8787"))
     api_key = env.get("CHATBRIDGE_API_KEY", "")
     alive = probe(probe_host, port, api_key=api_key)
+    system = (
+        fetch_json(probe_host, port, "/v1/system/status", api_key=api_key)
+        if doctor and alive else None
+    )
+    browser = (system or {}).get("browser", {})
     readiness = fetch_json(probe_host, port, "/ready", api_key=api_key) if alive else None
     ready = bool(readiness and readiness.get("ready"))
     result = {
@@ -640,7 +659,9 @@ def do_status(args, *, doctor=False):
         chrome = Path(env.get("CHATBRIDGE_CHROME_PATH", str(CHROME)))
         result["python_installed"] = python.is_file()
         result["chrome_installed"] = chrome.is_file()
-        if readiness and readiness.get("chatgpt_authenticated") is None:
+        if (system or {}).get("transport") == "mock" or (
+            readiness and readiness.get("chatgpt_authenticated") is None
+        ):
             result["next_action"] = "Mock-only transport; no ChatGPT login checked"
         elif not result["python_installed"]:
             result["next_action"] = "Run ./install.sh upgrade to restore Python environment"
@@ -648,8 +669,20 @@ def do_status(args, *, doctor=False):
             result["next_action"] = "Install Google Chrome, or use --chrome-path"
         elif not result["launchagent_loaded"] or not alive:
             result["next_action"] = "Check launchctl and service.stderr.log"
+        elif browser.get("mode") != "managed" or browser.get("state") != "running":
+            result["next_action"] = (
+                "Wait for /v1/system/status browser.state=running before opening "
+                "the managed profile; inspect service.stderr.log if it stays unavailable."
+            )
         elif not ready or readiness.get("chatgpt_authenticated") is not True:
-            result["next_action"] = "Sign in to ChatGPT in the managed Chrome window"
+            result["next_action"] = (
+                "Chrome runs in the background. Confirm /v1/system/status reports "
+                "browser.mode=managed and browser.state=running, then run login_command in Terminal, "
+                "then sign in to ChatGPT in that managed profile."
+            )
+            result["login_command"] = login_command(
+                chrome, env.get("CHATBRIDGE_CHROME_PROFILE", str(state / "chrome-profile"))
+            )
         else:
             result["next_action"] = "Healthy and authenticated"
     print(json.dumps(result, ensure_ascii=False, indent=2))
