@@ -32,6 +32,7 @@ must preserve the intended scheme/Host; no cross-origin browser UI is enabled.
 | `GET` | `/v1/system/status` | Chrome ownership, availability and supported thinking levels |
 | `GET` | `/ready` | HTTP 200 only when Chrome and ChatGPT editor are usable; does not wake idle Chrome |
 | `POST` | `/v1/browser/wake` | Start owned Chrome explicitly, including before manual login |
+| `POST` | `/v1/browser/verify` | Explicitly wake managed Chrome and verify the real ChatGPT composer; does not change passive `/ready` |
 | `POST` | `/v1/sessions` | Create a session or attach an existing ChatGPT conversation |
 | `GET` | `/v1/sessions` | List stored sessions |
 | `GET` | `/v1/sessions/{session_id}` | Read a session |
@@ -75,6 +76,11 @@ A manually opened window in the managed profile can also close on idle.
 `GET /health`, `GET /v1/system/status` and `GET /ready` do not wake Chrome.
 While idle, `/ready` returns HTTP 503 with `ready=false`, `chatgpt_authenticated=null` and
 `reason=browser_idle`; it does not probe ChatGPT authentication.
+
+To verify that an existing managed-profile login still works without
+requiring a new login, use POST /v1/browser/verify. This wakes Chrome
+only on explicit request and tests the real ChatGPT composer. Success
+returns ready=true and chatgpt_authenticated=true.
 
 To wake Chrome explicitly before opening the managed profile for login:
 

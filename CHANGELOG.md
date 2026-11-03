@@ -1,3 +1,11 @@
+## 2026-11-03 — opt-in managed browser readiness (CB-READY-01)
+
+- Add `POST /v1/browser/verify` to wake owned idle Chrome and verify the
+  live ChatGPT composer while holding its activity lease. It returns a real
+  authentication result, never a cached login guess.
+- Preserve passive `GET /ready`, 300-second idle shutdown, and existing
+  bearer/Origin protections. Document this contract for Mac Control clients.
+
 ## 0.2.0b11 — 2026-10-29
 
 - Wait for Chrome and verify the saved ChatGPT session before offering a manual check.

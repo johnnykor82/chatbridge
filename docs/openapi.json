@@ -3023,6 +3023,39 @@
           }
         }
       }
+    },
+    "/v1/browser/verify": {
+      "post": {
+        "operationId": "post_verify_managed_browser",
+        "summary": "Explicitly wake owned Chrome and verify a real ChatGPT composer",
+        "description": "Unlike passive GET /ready, this opt-in probe acquires an activity lease and wakes the managed browser before checking ChatGPT authentication. Does not infer login from /health or cached idle state. Shares API-key and Origin protection.",
+        "security": [
+          {},
+          {
+            "OptionalBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live ChatGPT composer verified; ready and chatgpt_authenticated are true"
+          },
+          "401": {
+            "description": "Configured bearer authentication is missing or invalid"
+          },
+          "403": {
+            "description": "Invalid gateway Host or cross-origin request"
+          },
+          "409": {
+            "description": "Browser mode is mock or external"
+          },
+          "429": {
+            "description": "ChatGPT provider rate limit/cooldown"
+          },
+          "503": {
+            "description": "Browser unavailable or ChatGPT authentication not confirmed; body includes reason"
+          }
+        }
+      }
     }
   }
 }

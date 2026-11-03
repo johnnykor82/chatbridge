@@ -924,7 +924,7 @@ def do_status(args, *, doctor=False):
                 + "First send POST http://" + probe_host + ":" + str(port) + "/v1/browser/wake. "
                 + ("Use your configured Authorization header for wake and status checks. " if api_key else "")
                 + "Wait until /v1/system/status reports browser.mode=managed and browser.state=running, "
-                "then run login_command in Terminal and sign in to ChatGPT in that managed profile."
+                "then POST /v1/browser/verify on the same gateway and inspect the real ChatGPT composer result. If chatgpt_authenticated=true, no login is needed. Only if verification fails, run login_command in Terminal and sign in to the managed profile."
             )
             result["login_command"] = login_command(
                 chrome, env.get("CHATBRIDGE_CHROME_PROFILE", str(state / "chrome-profile"))

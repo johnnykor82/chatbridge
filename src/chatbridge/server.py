@@ -1222,6 +1222,21 @@ def make_app(store: Store, engine: GatewayEngine, settings: Settings, browser_su
                 status=503,
             )
 
+    async def verify_browser(req):
+        """Wake only when explicitly requested; verify real composer while leased."""
+        if browser_supervisor is None:
+            return json_error(409, "Browser verify requires managed browser mode")
+        try:
+            async with browser_supervisor.activity():
+                return await readiness(req)
+        except Exception:
+            logging.getLogger(__name__).warning("Managed browser verify startup failed", exc_info=True)
+            return web.json_response(
+                {"ready": False, "chatgpt_authenticated": None,
+                 "reason": "browser_unavailable", "browser": browser_status()},
+                status=503,
+            )
+
     async def metrics(req):
         return web.json_response(
             {
@@ -1493,6 +1508,7 @@ def make_app(store: Store, engine: GatewayEngine, settings: Settings, browser_su
     app.router.add_get("/health", health)
     app.router.add_get("/ready", readiness)
     app.router.add_post("/v1/browser/wake", wake_browser)
+    app.router.add_post("/v1/browser/verify", verify_browser)
     app.router.add_get("/v1/system/status", system_status)
     app.router.add_get("/metrics", metrics)
     app.router.add_get("/v1/openapi.json", openapi_schema)

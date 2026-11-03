@@ -560,3 +560,85 @@ async def test_installed_wheel_can_serve_its_packaged_openapi(tmp_path, monkeypa
     finally:
         await client.close()
         store.close()
+
+
+@pytest.mark.asyncio
+async def test_explicit_verify_wakes_idle_then_checks_real_composer(managed, tmp_path):
+    """Idle stays passive; an explicitly requested probe acquires a lease."""
+    supervisor, state = managed
+    supervisor.idle_timeout = 0.04
+    await supervisor.start()
+    await asyncio.wait_for(state["closed"].wait(), 1)
+    store = Store(tmp_path / "db-verify.sqlite")
+    engine = GatewayEngine(store, MockTransport())
+
+    class FakeEditor:
+        first = None
+        async def wait_for(self, *, state, timeout):
+            assert state == "visible"
+    FakeEditor.first = FakeEditor()
+    class FakePage:
+        def on(self, *_): pass
+        async def goto(self, *_args, **_kwargs):
+            assert supervisor._active_requests > 0
+            await asyncio.sleep(0.06)
+            assert supervisor.cdp_url is not None
+        def locator(self, _selector): return FakeEditor()
+        async def close(self): pass
+    async def ensure(): return object()
+    async def new_page(_browser): return FakePage()
+    engine.transport._ensure = ensure
+    engine.transport._new_page = new_page
+    engine.transport._observe_provider_response = lambda _: None
+    client = TestClient(TestServer(make_app(
+        store, engine, Settings(transport="browser"), browser_supervisor=supervisor)))
+    await client.start_server()
+    try:
+        for _ in range(2):
+            response = await client.get("/ready")
+            assert response.status == 503
+            assert (await response.json())["reason"] == "browser_idle"
+        assert state["launches"] == 1
+        state["closed"].clear()
+        response = await client.post("/v1/browser/verify")
+        body = await response.json()
+        assert response.status == 200
+        assert body["ready"] is True
+        assert body["chatgpt_authenticated"] is True
+        assert state["launches"] == 2
+        assert supervisor._active_requests == 0
+        await asyncio.wait_for(state["closed"].wait(), 1)
+        assert supervisor.status()["state"] == "idle"
+    finally:
+        await client.close()
+        await supervisor.stop()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_explicit_verify_rejects_bad_auth_and_origin_without_waking(managed, tmp_path):
+    supervisor,state=managed
+    await supervisor.start()
+    await asyncio.wait_for(state["closed"].wait(),1)
+    store=Store(tmp_path/"db-verify-auth.sqlite")
+    engine=GatewayEngine(store,MockTransport())
+    client=TestClient(TestServer(make_app(
+        store,engine,Settings(transport="browser",api_key="fixture-key"),
+        browser_supervisor=supervisor)))
+    await client.start_server()
+    try:
+        noauth=await client.post("/v1/browser/verify")
+        assert noauth.status==401
+        forbidden=await client.post("/v1/browser/verify",headers={
+            "Authorization":"Bearer fixture-key","Origin":"https://foreign.invalid"})
+        assert forbidden.status==403
+        assert state["launches"]==1
+        schema_response=await client.get("/v1/openapi.json",headers={
+            "Authorization":"Bearer fixture-key"})
+        schema=await schema_response.json()
+        operation=schema["paths"]["/v1/browser/verify"]["post"]
+        assert {"200","401","403","409","503"} <= operation["responses"].keys()
+    finally:
+        await client.close()
+        await supervisor.stop()
+        store.close()

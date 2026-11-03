@@ -29,6 +29,8 @@ def test_idle_doctor_offers_wake_before_saved_profile_login(
     result = json.loads(printed)
     assert "POST http://127.0.0.1:18844/v1/browser/wake" in result["next_action"]
     assert "browser.state=running" in result["next_action"]
+    assert "/v1/browser/verify" in result["next_action"]
+    assert "no login is needed" in result["next_action"]
     assert "Authorization" in result["next_action"]
     assert shlex.split(result["login_command"]) == [
         str(tmp_path / "fake-chrome"),
