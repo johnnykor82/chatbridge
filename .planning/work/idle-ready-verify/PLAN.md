@@ -32,7 +32,7 @@ old dirty checkout /Users/openclaw/chatgpt-mcp/workspace/release-publication-202
 - [x] 4. Full suite, Analyze/Converge, Git commit and push feature branch.
 - [x] 5. Install immutable ChatBridge release using owned installer, verify,
       rollback on failure; do not erase profile or sessions.
-- [ ] 6. Update Mac Control client compatibility and deploy only after separate
+- [x] 6. Update Mac Control client compatibility and deploy only after separate
       source tests/CI, backup/rollback validation.
 No steps outside this documented scope without owner authorization.
 
@@ -72,3 +72,18 @@ No steps outside this documented scope without owner authorization.
   215 tests PASS, Ruff PASS, no CI workflows configured in this repo.
 - ChatBridge Converge PASS. Mac Control installer still needs FR024 client
   adaptation to use explicit verify only when browser_idle.
+
+
+## Integration Converge — 2026-11-03
+- Mac Control client FR024 source e79801ea82cd4fa3c5ac94c8798206329e75f7ca,
+  GitHub CI run 41583811974 succeeded. Updated Mac Control release
+  e79801ea82cd-46f680d581b3; inspector and Watcher running.
+- Explicit ChatBridge verification succeeded during Mac installer,
+  authenticated=true, status=ready, existing ChatBridge source/profile/DB
+  untouched. 598 Mac tests (one skipped), strict audit zero critical.
+- Installed Mac MCP protocol tested: ssh_exec 65537 bytes yields
+  SSH_COMMAND_TOO_LONG and SFTP alternative; custom_command absent required
+  argument yields VALIDATION_ERROR with expected signature. Installed mclog
+  reads actual command arguments. No SSH connection to VPN.
+- ChatBridge/installer integration accepted, code and documentation
+  aligned with spec CB-READY-01; no further rollout tasks open.
