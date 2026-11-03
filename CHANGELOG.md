@@ -1,3 +1,8 @@
+## 0.2.0b12 — 2026-11-03
+
+- Publish previously tested CB-READY-01: explicit authenticated managed browser verification via POST /v1/browser/verify.
+- Keep GET /ready passive; preserve session data and existing auth / origin security.
+
 ## 2026-11-03 — opt-in managed browser readiness (CB-READY-01)
 
 - Add `POST /v1/browser/verify` to wake owned idle Chrome and verify the
