@@ -30,7 +30,7 @@ old dirty checkout /Users/openclaw/chatgpt-mcp/workspace/release-publication-202
 - [x] 2. Write red tests for explicit probe and guards.
 - [x] 3. Implement route, documentation and tests.
 - [x] 4. Full suite, Analyze/Converge, Git commit and push feature branch.
-- [ ] 5. Install immutable ChatBridge release using owned installer, verify,
+- [x] 5. Install immutable ChatBridge release using owned installer, verify,
       rollback on failure; do not erase profile or sessions.
 - [ ] 6. Update Mac Control client compatibility and deploy only after separate
       source tests/CI, backup/rollback validation.
@@ -55,3 +55,20 @@ No steps outside this documented scope without owner authorization.
   browser wake in status polling. Existing saved managed profile preserved.
 - Source Converge: PASS. Deployment/install smoke and Mac Control client's
   idle detection are separate outstanding rollout gates.
+
+
+## Deployment Converge — 2026-11-03
+- Immutable installed release 0.2.0b11-c04804c3f2e5 via original owned
+  ChatBridge installer upgrade, no profile/SQLite wipe or cookie migration.
+  LaunchAgent net.chatbridge.gateway.maccontrol running.
+- Live HTTP: /health 200, /v1/system/status 200,
+  /v1/browser/verify POST 200 (chatgpt_authenticated:true), GET /ready
+  200 (authenticated:true). Existing sessions still 4. Release server.py
+  SHA256 identical to tested source:
+  2d12940fd25d5d478d8c63e20d53a410c264933af7d106fc096431d8b488ef55.
+- SQLite remains /Users/openclaw/MacControlMCP/deps/chatbridge-data/state.db;
+  Chrome profile unchanged under chatbridge-data/chrome-profile.
+- GitHub branch feature/idle-ready-verify-20261103 commit 02e15bd;
+  215 tests PASS, Ruff PASS, no CI workflows configured in this repo.
+- ChatBridge Converge PASS. Mac Control installer still needs FR024 client
+  adaptation to use explicit verify only when browser_idle.
