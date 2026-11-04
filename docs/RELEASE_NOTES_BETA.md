@@ -4,6 +4,12 @@
 
 ## English
 
+### v0.2.0-beta.13 — Native reasoning picker timing fix (2026-11-04)
+
+- Fix first-message failure when the model picker submenu is not yet mounted: if the native picker explicitly reports the requested `data-selected-reasoning-effort`, reuse that verified setting without opening a menu. When different or unknown, still open the native slider and verify the requested level; allow 18 seconds for its delayed mount instead of 6.
+- No change to ChatBridge message queue/idempotency, security, Chrome profile, SQLite or API semantics. Failed/unknown requests are **not** blindly retried.
+- Three focused new tests passed (RED→GREEN), 218 total regression tests passed; lint passed. Real new-chat and Watcher marker→URL acceptance are checked separately after deployment, not claimed by tests alone.
+
 **Read in Russian:** [Русский](#русский)
 
 ChatBridge is a standalone macOS HTTP gateway for a user-authorized ChatGPT web session. It creates and tracks conversations, schedules asynchronous requests, retains history and attachments, and streams responses to applications and agents. It also exposes ChatBridge-owned background browser operations through a dedicated Browser API.
@@ -26,6 +32,12 @@ ChatBridge is a standalone macOS HTTP gateway for a user-authorized ChatGPT web 
 **Installation:** use this repository's README and `./install.sh` after reviewing source. No secrets or private browser profiles belong in GitHub.
 
 ## Русский
+
+### v0.2.0-beta.13 — Исправление выбора режима рассуждения (04.11.2026)
+
+- При отправке первого сообщения ChatBridge сначала проверяет фактическое значение `data-selected-reasoning-effort` и не открывает меню повторно, если нужный режим уже выставлен. При переключении сохраняется проверка слайдера, время ожидания увеличено с 6 до 18 секунд.
+- Очереди, идентификаторы запросов, авторизация, профиль Chrome и SQLite не меняются. Неоднозначные или неудавшиеся отправки автоматически не повторяются.
+- Три новых теста прошли RED→GREEN; общий набор — 218 тестов, проверка Ruff без ошибок. Сквозной поиск метки проверяется отдельно после обновления.
 
 **Read in English:** [English](#english)
 

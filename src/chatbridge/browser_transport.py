@@ -483,7 +483,7 @@ class BrowserTransport:
             await session.detach()
 
     async def _configure_reasoning_effort(self, page, effort: str) -> None:
-        """Select native ChatGPT reasoning slider and verify its actual state."""
+        """Verify current reasoning effort before opening the native model picker."""
         levels = {"low": 0, "medium": 1, "high": 2}
         if effort not in levels:
             raise ValueError("Unsupported reasoning effort")
@@ -507,6 +507,12 @@ class BrowserTransport:
                     "button", name=re.compile(r"(?:Select ChatGPT model|Выбрать модель ChatGPT)", re.I)
                 ).first
             await picker.wait_for(state="visible", timeout=20000)
+            # The real ChatGPT picker exposes the selected level on its button.
+            # If it already matches, do not open a fragile SPA submenu merely
+            # to confirm the same value (observed on JKMac-2, 2026-11-04).
+            current = await picker.get_attribute("data-selected-reasoning-effort")
+            if current == effort:
+                return
             # CDP tabs are deliberately opened in the background. A Playwright
             # pointer click may hang waiting for focus/navigation even when the
             # React control responds. Native DOM click works without stealing
@@ -516,7 +522,7 @@ class BrowserTransport:
             raise RuntimeError("ChatGPT reasoning/model picker unavailable") from exc
         try:
             control = page.locator("[data-reasoning-slider]").first
-            await control.wait_for(state="visible", timeout=6000)
+            await control.wait_for(state="visible", timeout=18000)
             value = control.locator("[aria-valuenow]").first
             actual = int(await value.get_attribute("aria-valuenow") or -1)
             target = levels[effort]
