@@ -4,6 +4,12 @@
 
 ## English
 
+### v0.2.0-beta.14 — Watcher notification receipt (2026-11-05)
+
+- An exact Watcher delivery or batch notification is terminal once the browser confirms the real provider user-message ID and canonical chat, not after an unnecessary assistant model reply. No fabricated assistant turn; the global ChatBridge slot is released immediately. Ordinary ChatGPT requests still require the full assistant answer.
+- Strict Watcher stable client keys and matching MC-WATCH markers gate this mode. SQLite idempotency and no blind retransmission are unchanged.
+- New TDD tests cover immediate receipt, regular requests, malformed keys and batch notifications. Full local ChatBridge suite 223 PASS. Keep prior beta.13 and Chrome profile as rollback, no other service upgrades.
+
 ### v0.2.0-beta.13 — Native reasoning picker timing fix (2026-11-04)
 
 - Fix first-message failure when the model picker submenu is not yet mounted: if the native picker explicitly reports the requested `data-selected-reasoning-effort`, reuse that verified setting without opening a menu. When different or unknown, still open the native slider and verify the requested level; allow 18 seconds for its delayed mount instead of 6.
@@ -32,6 +38,11 @@ ChatBridge is a standalone macOS HTTP gateway for a user-authorized ChatGPT web 
 **Installation:** use this repository's README and `./install.sh` after reviewing source. No secrets or private browser profiles belong in GitHub.
 
 ## Русский
+
+### v0.2.0-beta.14 — Завершение уведомлений Watcher (05.11.2026)
+
+- Watcher-уведомления завершаются после подтверждения настоящего пользовательского сообщения в нужном чате, без ожидания ответа модели до 30 минут. Обычные запросы работают по-старому; ответ ассистента не подделывается.
+- Строгая проверка ключей/меток, дедупликация и отсутствие слепых повторов сохранены. 223 теста ChatBridge прошли.
 
 ### v0.2.0-beta.13 — Исправление выбора режима рассуждения (04.11.2026)
 

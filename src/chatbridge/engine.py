@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import re
 import time
 import uuid
 from contextlib import aclosing
@@ -16,6 +17,26 @@ from .rate_limit import ProviderRateLimitError
 from .store import TERMINAL, Store
 
 logger = logging.getLogger(__name__)
+
+
+def _watcher_receipt_only(request: dict) -> bool:
+    """Only source-bound Watcher delivery notices need a user-message receipt.
+
+    All ordinary requests still require an actual assistant end_turn. Neither
+    a matching prompt alone nor an arbitrary client key enables early finish.
+    """
+    key = request.get("client_request_id") or ""
+    prompt = request.get("prompt") or ""
+    individual = re.fullmatch(r"watcher-delivery-([0-9a-f]{32})", key)
+    if individual:
+        return prompt.startswith(f"[MC-WATCH:{individual.group(1)}]")
+    batch = re.fullmatch(r"watcher-batch-([0-9a-f]{32})", key)
+    if batch and prompt.startswith(
+        "Watcher: Multiple notifications were queued while the orchestrator was busy."
+    ):
+        tokens = re.findall(r"\\[MC-WATCH:([0-9a-f]{32})\\]", prompt)
+        return len(set(tokens)) >= 2
+    return False
 
 
 class QueueBackpressureError(RuntimeError):
@@ -236,6 +257,23 @@ class GatewayEngine:
                                 self.store.insert_message(
                                     sid, "user", prompt, request_id=rid, message_id=ev.message_id
                                 )
+                                # Watcher notifications are messages TO the
+                                # orchestrator, not a request for a model reply.
+                                # The provider-assigned user-message ID, exact
+                                # immutable request key and physical chat binding
+                                # prove receipt. Never fabricate an assistant turn.
+                                if (
+                                    ev.message_id and ev.conversation_id
+                                    and ev.conversation_id == session.get("conversation_id")
+                                    and _watcher_receipt_only(request)
+                                ):
+                                    self.store.set_status(rid, "completed")
+                                    await self._emit(
+                                        rid, sid, "completed", answer="",
+                                        receipt_only=True,
+                                        user_message_id=ev.message_id,
+                                    )
+                                    return  # aclosing frees browser and provider slot
                                 await self._emit(rid, sid, "status", status="thinking")
                                 self.store.set_status(rid, "thinking")
                             elif ev.type == "text_delta":
