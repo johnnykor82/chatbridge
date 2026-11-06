@@ -88,15 +88,39 @@ async def test_idempotence(service):
 @pytest.mark.asyncio
 async def test_ten_parallel_and_eleventh_queued(service):
     client, store, engine, transport = service
+    # Hold each mock stream after its thinking event until all 10 workers
+    # are active; fixed sleeps race against slow CI event-loop scheduling.
+    release = asyncio.Event()
+    underlying_generate = transport.generate
+
+    async def gated_generate(**kwargs):
+        terminal = None
+        async for event in underlying_generate(**kwargs):
+            if event.type == "completed":
+                terminal = event
+                continue
+            yield event
+            if event.type == "thinking":
+                await release.wait()
+        # Mock transport's finally block has now decremented its active count.
+        # The engine may release the next slot only after this terminal event.
+        if terminal is not None:
+            yield terminal
+
+    transport.generate = gated_generate
     sessions = [await new_session(client) for _ in range(11)]
     requests = []
-    for i, s in enumerate(sessions):
-        response = await send(client, s["session_id"], "marker-" + str(i), "k-" + str(i))
-        requests.append((await response.json())["request_id"])
-    # The first 10 should be executing, the 11th must wait.
-    await asyncio.sleep(0.025)
-    assert engine.active == 10
-    assert store.get_request(requests[-1])["status"] == "queued"
+    try:
+        for i, s in enumerate(sessions):
+            response = await send(client, s["session_id"], "marker-" + str(i), "k-" + str(i))
+            requests.append((await response.json())["request_id"])
+        deadline = asyncio.get_running_loop().time() + 3
+        while engine.active != 10 and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
+        assert engine.active == 10
+        assert store.get_request(requests[-1])["status"] == "queued"
+    finally:
+        release.set()
     await asyncio.gather(*(engine.wait_terminal(rid, 4) for rid in requests))
     assert engine.max_seen == 10
     assert transport.max_seen == 10
