@@ -4,6 +4,13 @@
 
 ## English
 
+### v0.2.0-beta.15 — Automatic recent-chat discovery (2026-11-06)
+
+- ChatBridge resolves a unique watcher marker without asking the user or agent for a URL. It first scans a bounded set of recent ChatGPT conversations in its managed browser and verifies the full marker, sender role and conversation identity. The existing indexed search is retained as a fallback under one bounded timeout.
+- No new executor message is sent during discovery. Unverified, redirected or ambiguous candidates fail closed; provider authentication and cooldown policies remain unchanged.
+- 229 offline tests pass on macOS; CI is required before release. ChatBridge beta.14 and its Chrome profile remain available for rollback.
+
+
 ### v0.2.0-beta.14 — Watcher notification receipt (2026-11-05)
 
 - An exact Watcher delivery or batch notification is terminal once the browser confirms the real provider user-message ID and canonical chat, not after an unnecessary assistant model reply. No fabricated assistant turn; the global ChatBridge slot is released immediately. Ordinary ChatGPT requests still require the full assistant answer.
@@ -38,6 +45,13 @@ ChatBridge is a standalone macOS HTTP gateway for a user-authorized ChatGPT web 
 **Installation:** use this repository's README and `./install.sh` after reviewing source. No secrets or private browser profiles belong in GitHub.
 
 ## Русский
+
+### v0.2.0-beta.15 — Автоматическое обнаружение чатов (06.11.2026)
+
+- Пользователь и агент не предоставляют URL: ChatBridge проверяет последние чаты из боковой панели ChatGPT, полную метку, роль сообщения и идентификатор разговора. Поисковый индекс используется как резервный способ, все проверки ограничены таймаутом.
+- При неоднозначности и отсутствии доказательства отправка не выполняется. Существующие ограничения доступа, дедупликация и профиль браузера сохранены.
+- Локально 229 тестов PASS; релиз допускается только после успешного CI. Версия beta.14 сохраняется для отката.
+
 
 ### v0.2.0-beta.14 — Завершение уведомлений Watcher (05.11.2026)
 
