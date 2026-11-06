@@ -1308,7 +1308,7 @@ class BrowserTransport:
     @_browser_operation
     async def resolve_chat_marker(self, marker: str) -> dict:
         """Read-only built-in ChatGPT search, serialized with provider cooldown."""
-        from .marker_lookup import resolve_in_browser, validate_marker
+        from .marker_lookup import resolve_automatically, validate_marker
 
         validate_marker(marker)
         if self._rate_limit_checker() > 0:
@@ -1317,7 +1317,7 @@ class BrowserTransport:
             if self._rate_limit_checker() > 0:
                 raise ProviderRateLimitError("Provider cooldown prevents marker lookup")
             browser = await self._ensure()
-            return await resolve_in_browser(
+            return await resolve_automatically(
                 browser, marker, self._observe_provider_response, new_page=self._new_page
             )
 

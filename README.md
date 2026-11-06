@@ -101,3 +101,15 @@ Licensed under [MIT](LICENSE). The code is independently implemented.
 ---
 
 [Русская версия](README.ru.md)
+
+## BF25 — autonomous chat discovery without search indexing
+
+Watcher supplies only an owner-bound unique marker; neither the user nor the
+agent has to provide the ChatGPT conversation URL. ChatBridge resolves the
+marker using its already authenticated managed browser: it first scans a
+bounded set of recent conversation links in the ChatGPT sidebar, then tries
+the built-in search index if necessary. Every candidate must be a canonical
+chatgpt.com conversation whose exact marker and message author are verified
+in the selected conversation. Invalid, ambiguous or unverified evidence fails
+closed. Neither strategy sends a new chat message merely to discover a URL.
+Both strategies share a strict deadline shorter than the Watcher HTTP timeout.

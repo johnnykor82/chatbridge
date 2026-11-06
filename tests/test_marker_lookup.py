@@ -110,3 +110,141 @@ async def test_assistant_verification_api(tmp_path: Path):
         await client.close()
         await engine.stop()
         store.close()
+
+
+def test_recent_chat_candidate_selection_safe_and_bounded():
+    from chatbridge.marker_lookup import recent_chat_candidates
+    raw = [
+        '/c/11111111-1111-4111-8111-111111111111',
+        '/c/11111111-1111-4111-8111-111111111111',
+        '/c/22222222-2222-4222-8222-222222222222',
+        'https://evil.invalid/c/11111111-1111-4111-8111-111111111111',
+        '/share/11111111-1111-4111-8111-111111111111',
+        '/c/33333333-3333-4333-8333-333333333333?foo=1',
+    ]
+    found = recent_chat_candidates(raw, limit=2)
+    assert found == [
+        CHAT_URL,
+        'https://chatgpt.com/c/22222222-2222-4222-8222-222222222222',
+    ]
+
+
+@pytest.mark.asyncio
+async def test_recent_chat_discovery_requires_verified_exact_marker(monkeypatch):
+    from chatbridge import marker_lookup
+    urls = [CHAT_URL, 'https://chatgpt.com/c/22222222-2222-4222-8222-222222222222']
+    calls = []
+    async def enumerate_urls(*args, **kwargs):
+        return urls
+    async def verified(browser, marker, url, *, observe, new_page):
+        calls.append(url)
+        return 'assistant_message' if url == CHAT_URL else None
+    monkeypatch.setattr(marker_lookup, 'enumerate_recent_chat_urls', enumerate_urls)
+    monkeypatch.setattr(marker_lookup, 'verify_candidate_chat', verified)
+    result = await marker_lookup.resolve_in_recent(object(), MARKER)
+    assert result == {'chat_url': CHAT_URL, 'evidence_verified': True,
+                      'verification': 'assistant_message', 'matches': 1}
+    assert calls == urls
+
+
+@pytest.mark.asyncio
+async def test_recent_discovery_fails_closed_for_multiple_verified_chats(monkeypatch):
+    from chatbridge import marker_lookup
+    urls = [CHAT_URL, 'https://chatgpt.com/c/22222222-2222-4222-8222-222222222222']
+    async def enumerate_urls(*args, **kwargs):
+        return urls
+    async def verified(browser, marker, url, *, observe, new_page):
+        return 'assistant_message'
+    monkeypatch.setattr(marker_lookup, 'enumerate_recent_chat_urls', enumerate_urls)
+    monkeypatch.setattr(marker_lookup, 'verify_candidate_chat', verified)
+    with pytest.raises(AmbiguousMarker):
+        await marker_lookup.resolve_in_recent(object(), MARKER)
+
+
+@pytest.mark.asyncio
+async def test_automatic_discovery_prefers_recent_without_index(monkeypatch):
+    from chatbridge import marker_lookup
+    calls = []
+    async def recent(*args, **kwargs):
+        calls.append('recent')
+        return {'chat_url': CHAT_URL, 'verification': 'assistant_message',
+                'evidence_verified': True, 'matches': 1}
+    async def index(*args, **kwargs):
+        calls.append('index')
+        raise AssertionError('Index must not be used if recent chat verifies marker')
+    monkeypatch.setattr(marker_lookup, 'resolve_in_recent', recent)
+    monkeypatch.setattr(marker_lookup, 'resolve_in_browser', index)
+    assert (await marker_lookup.resolve_automatically(object(), MARKER))['chat_url'] == CHAT_URL
+    assert calls == ['recent']
+
+
+@pytest.mark.asyncio
+async def test_automatic_discovery_falls_back_to_index_only_on_recent_not_found(monkeypatch):
+    from chatbridge import marker_lookup
+    calls = []
+    async def recent(*args, **kwargs):
+        calls.append('recent')
+        raise MarkerNotFound('No recent sidebar match')
+    async def index(*args, **kwargs):
+        calls.append('index')
+        return {'chat_url': CHAT_URL, 'verification': 'assistant_message',
+                'evidence_verified': True, 'matches': 1}
+    monkeypatch.setattr(marker_lookup, 'resolve_in_recent', recent)
+    monkeypatch.setattr(marker_lookup, 'resolve_in_browser', index)
+    assert (await marker_lookup.resolve_automatically(object(), MARKER))['chat_url'] == CHAT_URL
+    assert calls == ['recent', 'index']
+
+
+@pytest.mark.asyncio
+async def test_recent_candidate_rejects_mismatched_conversation_or_marker():
+    from chatbridge.marker_lookup import verify_candidate_chat
+
+    class Locator:
+        def __init__(self, texts):
+            self.texts = texts
+        async def count(self):
+            return len(self.texts)
+        async def all_inner_texts(self):
+            return self.texts
+
+    class Page:
+        def __init__(self, user=None, assistant=None, redirected=None):
+            self.user = user or []
+            self.assistant = assistant or []
+            self.redirected = redirected
+            self.url = ""
+            self.closed = False
+        async def goto(self, url, **kwargs):
+            self.url = self.redirected or url
+        def locator(self, selector):
+            return Locator(self.user if 'data-user-message-bubble' in selector else self.assistant)
+        async def wait_for_timeout(self, t):
+            pass
+        async def evaluate(self, script, conversation_id):
+            # No verified backend chain: reject rather than infer identity.
+            return {"error": "history_unavailable"}
+        async def close(self):
+            self.closed = True
+
+    class Browser:
+        contexts = [object()]
+
+    async def scan(page):
+        return await verify_candidate_chat(
+            Browser(), MARKER, CHAT_URL, new_page=lambda _: async_page(page)
+        )
+    async def async_page(page):
+        return page
+
+    redirected = Page(assistant=[MARKER], redirected='https://chatgpt.com/c/22222222-2222-4222-8222-222222222222')
+    assert await scan(redirected) is None
+    assert redirected.closed
+
+    wrong = Page(assistant=['wrong marker'])
+    with pytest.raises(RuntimeError, match="history verification unavailable"):
+        await scan(wrong)
+    assert wrong.closed
+
+    verified = Page(assistant=['Some context ' + MARKER])
+    assert await scan(verified) == 'assistant_message'
+    assert verified.closed
