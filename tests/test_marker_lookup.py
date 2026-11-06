@@ -129,36 +129,94 @@ def test_recent_chat_candidate_selection_safe_and_bounded():
     ]
 
 
+class RecentSidebarPage:
+    def __init__(self, history):
+        self.history = history
+        self.hrefs = ['/c/' + cid for cid in history]
+        self.loaded = []
+        self.url = "https://chatgpt.com/"
+        self.closed = False
+
+    def locator(self, selector):
+        assert 'a[href^="/c/"]' in selector
+        return self
+
+    async def count(self):
+        return len(self.hrefs)
+
+    def nth(self, index):
+        class Link:
+            async def get_attribute(_, attribute):
+                assert attribute == "href"
+                return self.hrefs[index]
+        return Link()
+
+    async def evaluate(self, js, cid):
+        return self.history[cid]
+
+    async def wait_for_timeout(self, ms):
+        pass
+
+    async def goto(self, url, **kwargs):
+        self.loaded.append(url)
+        self.url = url
+
+    def on(self, *args):
+        pass
+
+    async def close(self):
+        self.closed = True
+
+
+def recent_history(cid, marker=None):
+    return {'provider_conversation_id': cid, 'conversation_id': cid,
+            'chain': [{'role': 'assistant', 'content': marker or 'unrelated'}]}
+
+
 @pytest.mark.asyncio
-async def test_recent_chat_discovery_requires_verified_exact_marker(monkeypatch):
-    from chatbridge import marker_lookup
-    urls = [CHAT_URL, 'https://chatgpt.com/c/22222222-2222-4222-8222-222222222222']
-    calls = []
-    async def enumerate_urls(*args, **kwargs):
-        return urls
-    async def verified(browser, marker, url, *, observe, new_page):
-        calls.append(url)
-        return 'assistant_message' if url == CHAT_URL else None
-    monkeypatch.setattr(marker_lookup, 'enumerate_recent_chat_urls', enumerate_urls)
-    monkeypatch.setattr(marker_lookup, 'verify_candidate_chat', verified)
-    result = await marker_lookup.resolve_in_recent(object(), MARKER)
+async def test_recent_chat_discovery_requires_verified_exact_marker():
+    from chatbridge.marker_lookup import resolve_recent_page
+    one = CHAT_URL.rsplit('/c/', 1)[-1]
+    two = '22222222-2222-4222-8222-222222222222'
+    page = RecentSidebarPage({
+        one: recent_history(one, MARKER),
+        two: recent_history(two),
+    })
+    result = await resolve_recent_page(page, MARKER)
     assert result == {'chat_url': CHAT_URL, 'evidence_verified': True,
                       'verification': 'assistant_message', 'matches': 1}
-    assert calls == urls
+    assert page.loaded == []
 
 
 @pytest.mark.asyncio
-async def test_recent_discovery_fails_closed_for_multiple_verified_chats(monkeypatch):
-    from chatbridge import marker_lookup
-    urls = [CHAT_URL, 'https://chatgpt.com/c/22222222-2222-4222-8222-222222222222']
-    async def enumerate_urls(*args, **kwargs):
-        return urls
-    async def verified(browser, marker, url, *, observe, new_page):
-        return 'assistant_message'
-    monkeypatch.setattr(marker_lookup, 'enumerate_recent_chat_urls', enumerate_urls)
-    monkeypatch.setattr(marker_lookup, 'verify_candidate_chat', verified)
+async def test_recent_discovery_fails_closed_for_multiple_verified_chats():
+    from chatbridge.marker_lookup import resolve_recent_page
+    one = CHAT_URL.rsplit('/c/', 1)[-1]
+    two = '22222222-2222-4222-8222-222222222222'
+    page = RecentSidebarPage({
+        one: recent_history(one, MARKER),
+        two: recent_history(two, MARKER),
+    })
     with pytest.raises(AmbiguousMarker):
-        await marker_lookup.resolve_in_recent(object(), MARKER)
+        await resolve_recent_page(page, MARKER)
+
+
+@pytest.mark.asyncio
+async def test_recent_discovery_uses_one_navigation_for_all_chats():
+    from chatbridge.marker_lookup import resolve_in_recent
+    one = CHAT_URL.rsplit('/c/', 1)[-1]
+    two = '22222222-2222-4222-8222-222222222222'
+    page = RecentSidebarPage({
+        one: recent_history(one, MARKER), two: recent_history(two),
+    })
+    class Browser:
+        contexts = [object()]
+    async def new_page(browser):
+        return page
+    result = await resolve_in_recent(Browser(), MARKER, new_page=new_page)
+    assert result['chat_url'] == CHAT_URL
+    assert page.loaded == ['https://chatgpt.com/']
+    assert page.closed
 
 
 @pytest.mark.asyncio
@@ -248,3 +306,22 @@ async def test_recent_candidate_rejects_mismatched_conversation_or_marker():
     verified = Page(assistant=['Some context ' + MARKER])
     assert await scan(verified) == 'assistant_message'
     assert verified.closed
+    both = Page(user=[MARKER], assistant=[MARKER])
+    assert await scan(both) == 'assistant_message'
+    assert both.closed
+
+
+def test_recent_history_requires_real_provider_id_and_exact_assistant_role():
+    from chatbridge.marker_lookup import verified_role_from_history
+    cid = CHAT_URL.rsplit('/c/', 1)[-1]
+    valid = {'provider_conversation_id': cid, 'conversation_id': cid,
+             'chain': [{'role': 'assistant', 'content': 'Alpha ' + MARKER}]}
+    assert verified_role_from_history(valid, cid, MARKER) == 'assistant_message'
+    assert verified_role_from_history({**valid, 'chain': [{'role': 'user', 'content': MARKER}]},
+                                      cid, MARKER) == 'user_message'
+    assert verified_role_from_history({**valid, 'chain': [{'role': 'assistant', 'content': 'Not this'}]},
+                                      cid, MARKER) is None
+    with pytest.raises(RuntimeError, match='identity'):
+        verified_role_from_history({**valid, 'provider_conversation_id': None}, cid, MARKER)
+    with pytest.raises(RuntimeError, match='identity'):
+        verified_role_from_history({**valid, 'provider_conversation_id': 'other'}, cid, MARKER)

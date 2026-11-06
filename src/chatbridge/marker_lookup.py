@@ -169,10 +169,10 @@ async def resolve_in_browser(browser, marker, observe=None, new_page=None):
                         break
                     await probe.wait_for_timeout(700)
                 role = None
-                if any(message_contains_marker(t, marker) for t in await user.all_inner_texts()):
-                    role = "user_message"
-                elif any(message_contains_marker(t, marker) for t in await assistant.all_inner_texts()):
+                if any(message_contains_marker(t, marker) for t in await assistant.all_inner_texts()):
                     role = "assistant_message"
+                elif any(message_contains_marker(t, marker) for t in await user.all_inner_texts()):
+                    role = "user_message"
                 if not role:
                     # ChatGPT may virtualize an assistant turn or render
                     # structured rich content outside the usual message node.
@@ -188,12 +188,16 @@ async def resolve_in_browser(browser, marker, observe=None, new_page=None):
                         raise RuntimeError("Chat history verification unavailable")
                     if history.get("conversation_id") != expected_cid:
                         raise RuntimeError("Provider conversation identity mismatch")
-                    for node in history.get("chain", []):
+                    roles = {
+                        node.get("role") for node in history.get("chain", [])
                         if node.get("role") in ("user", "assistant") and message_contains_marker(
                             node.get("content", ""), marker
-                        ):
-                            role = node["role"] + "_message"
-                            break
+                        )
+                    }
+                    if "assistant" in roles:
+                        role = "assistant_message"
+                    elif "user" in roles:
+                        role = "user_message"
                 if role:
                     found[target] = role
             finally:
@@ -270,10 +274,10 @@ async def verify_candidate_chat(browser, marker, target, *, observe=None, new_pa
             if await user.count() or await assistant.count():
                 break
             await probe.wait_for_timeout(450)
-        if any(message_contains_marker(t, marker) for t in await user.all_inner_texts()):
-            return "user_message"
         if any(message_contains_marker(t, marker) for t in await assistant.all_inner_texts()):
             return "assistant_message"
+        if any(message_contains_marker(t, marker) for t in await user.all_inner_texts()):
+            return "user_message"
         # Existing ChatBridge provider-chain verification supports virtualized
         # messages but never accepts an unverified conversation ID or role.
         from .browser_transport import BACKEND_JS
@@ -296,27 +300,104 @@ async def verify_candidate_chat(browser, marker, target, *, observe=None, new_pa
         await probe.close()
 
 
-async def resolve_in_recent(browser, marker, observe=None, new_page=None):
-    """Find a marker independently of ChatGPT search indexing; no user URL."""
-    import asyncio
+
+class RecentScanUnavailable(RuntimeError):
+    """Recent sidebar or provider history could not be verified."""
+
+
+def verified_role_from_history(history, expected_cid, marker):
+    """Verify real provider conversation identity and full marker author role."""
     validate_marker(marker)
+    if not isinstance(history, dict):
+        raise RecentScanUnavailable("History verification unavailable")
+    if history.get("error") == "history_http_429":
+        from .rate_limit import ProviderRateLimitError
+        raise ProviderRateLimitError("Provider history rate limited")
+    if history.get("error") in ("not_authenticated", "history_http_401", "history_http_403"):
+        raise PermissionError("ChatGPT history authorization denied")
+    if history.get("error") == "history_http_404":
+        return None
+    if history.get("error"):
+        raise RecentScanUnavailable("Provider history lookup unavailable")
+    if history.get("provider_conversation_id") != expected_cid:
+        raise RecentScanUnavailable("Provider conversation identity mismatch")
+    chain = history.get("chain")
+    if not isinstance(chain, list):
+        raise RecentScanUnavailable("Provider conversation chain missing")
+    roles = {
+        node.get("role") for node in chain
+        if isinstance(node, dict) and message_contains_marker(
+            node.get("content", ""), marker
+        )
+    }
+    if "assistant" in roles:
+        return "assistant_message"
+    if "user" in roles:
+        return "user_message"
+    return None
+
+
+
+async def resolve_recent_page(page, marker):
+    """Verify recent ChatGPT sidebar links on ONE authenticated page."""
+    import asyncio
+
+    from .browser_transport import BACKEND_JS
+
+    locator = page.locator('a[href^="/c/"], a[href^="/g/"]')
+    for _ in range(4):
+        if await locator.count():
+            break
+        await page.wait_for_timeout(500)
+    hrefs = []
+    for i in range(min(await locator.count(), 48)):
+        hrefs.append(await locator.nth(i).get_attribute("href"))
+    candidates = recent_chat_candidates(hrefs, limit=12)
     found = {}
-    async with asyncio.timeout(100):
-        candidates = await enumerate_recent_chat_urls(browser, new_page=new_page)
-        for candidate in candidates:
-            role = await verify_candidate_chat(
-                browser, marker, candidate, observe=observe, new_page=new_page)
-            if role:
-                found[candidate] = role
+    incomplete = 0
+    for candidate in candidates:
+        expected_cid = candidate.rsplit("/c/", 1)[-1]
+        try:
+            history = await asyncio.wait_for(
+                page.evaluate(BACKEND_JS, expected_cid), timeout=6
+            )
+            role = verified_role_from_history(history, expected_cid, marker)
+        except (RecentScanUnavailable, TimeoutError):
+            incomplete += 1
+            continue
+        if role:
+            found[candidate] = role
     if len(found) > 1:
-        raise AmbiguousMarker("Marker verified in multiple recent conversations")
+        raise AmbiguousMarker("Marker appears in more than one verified chat")
+    if incomplete:
+        raise RecentScanUnavailable("Recent conversation verification incomplete")
     if not found:
-        raise MarkerNotFound("Exact marker not in bounded recent conversation sidebar")
-    chat_url, verification = next(iter(found.items()))
+        raise MarkerNotFound("Exact marker absent from verified recent conversations")
+    chat_url, role = next(iter(found.items()))
     return {"chat_url": chat_url, "evidence_verified": True,
-            "verification": verification, "matches": 1}
+            "verification": role, "matches": 1}
 
 
+async def resolve_in_recent(browser, marker, observe=None, new_page=None):
+    """Resolve without ChatGPT search index or repeated candidate navigations."""
+    import asyncio
+    from urllib.parse import urlsplit
+
+    validate_marker(marker)
+    if not browser.contexts:
+        raise RecentScanUnavailable("No authenticated ChatGPT browser context")
+    page = await new_page(browser) if new_page else await browser.contexts[0].new_page()
+    try:
+        if observe:
+            page.on("response", observe)
+        async with asyncio.timeout(85):
+            await page.goto("https://chatgpt.com/", wait_until="domcontentloaded",
+                            timeout=15000)
+            if urlsplit(page.url).netloc != "chatgpt.com":
+                raise PermissionError("ChatGPT browser not authenticated")
+            return await resolve_recent_page(page, marker)
+    finally:
+        await page.close()
 
 async def resolve_automatically(browser, marker, observe=None, new_page=None):
     """Prefer sidebar to full-text index, retaining one bounded HTTP deadline."""
@@ -325,7 +406,7 @@ async def resolve_automatically(browser, marker, observe=None, new_page=None):
     async with asyncio.timeout(170):
         try:
             return await resolve_in_recent(browser, marker, observe, new_page)
-        except (MarkerNotFound, TimeoutError):
+        except (MarkerNotFound, RecentScanUnavailable, TimeoutError):
             # A failed recent-chat scan is not evidence the chat is missing;
             # search is the bounded secondary discovery strategy.
             return await resolve_in_browser(browser, marker, observe, new_page)

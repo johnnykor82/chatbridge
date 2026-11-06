@@ -4,6 +4,12 @@
 
 ## English
 
+### v0.2.0-beta.16 — Faster verified chat discovery (2026-11-06)
+
+- Live beta.15 testing found the first recent-chat fallback could spend 100 seconds opening candidate conversations one by one, returning HTTP 502 instead of resolving. Beta.16 reuses ONE managed browser page and verifies recent candidates via the existing provider conversation history reader, requiring the actual provider conversation ID, full marker and verified author role. No manual URL or extra chat sends.
+- Candidate history checks are bounded individually; full lookup stays below Watcher's hard timeout. Assistant evidence takes precedence when users quote an assistant marker. Missing, unavailable or ambiguous identity fails closed; indexed search remains a fallback. Source lint and 231 offline tests pass; CI and independent live acceptance required.
+
+
 ### v0.2.0-beta.15 — Automatic recent-chat discovery (2026-11-06)
 
 - ChatBridge resolves a unique watcher marker without asking the user or agent for a URL. It first scans a bounded set of recent ChatGPT conversations in its managed browser and verifies the full marker, sender role and conversation identity. The existing indexed search is retained as a fallback under one bounded timeout.
@@ -45,6 +51,12 @@ ChatBridge is a standalone macOS HTTP gateway for a user-authorized ChatGPT web 
 **Installation:** use this repository's README and `./install.sh` after reviewing source. No secrets or private browser profiles belong in GitHub.
 
 ## Русский
+
+### v0.2.0-beta.16 — Быстрый проверенный поиск чатов (06.11.2026)
+
+- Живой тест beta.15 выявил тайм-аут при последовательном открытии найденных разговоров. Beta.16 использует одну страницу ChatBridge и читает подтверждённую историю каждого кандидата с проверкой настоящего идентификатора, полной метки и роли сообщения. URL пользователя не требуется.
+- Приоритет доказательства из сообщения ассистента, даже если пользователь цитирует метку. Ограничение времени для каждого кандидата, резервный поисковый индекс, отказ без отправки сообщений при неоднозначности. 231 локальный тест прошёл; необходимы CI и независимая проверка на jkmac.
+
 
 ### v0.2.0-beta.15 — Автоматическое обнаружение чатов (06.11.2026)
 
