@@ -384,3 +384,32 @@ async def test_provider_429_aborts_when_sidebar_is_empty():
     page = Page({})
     with pytest.raises(ProviderRateLimitError):
         await resolve_recent_page(page, MARKER)
+
+
+@pytest.mark.asyncio
+async def test_verified_recent_assistant_survives_unrelated_history_failure():
+    from chatbridge.marker_lookup import resolve_recent_page
+    one = CHAT_URL.rsplit('/c/', 1)[-1]
+    two = '22222222-2222-4222-8222-222222222222'
+    three = '33333333-3333-4333-8333-333333333333'
+    four = '44444444-4444-4444-8444-444444444444'
+    class RecentPage(RecentSidebarPage):
+        def __init__(self):
+            super().__init__({
+                one: recent_history(one, MARKER), two: recent_history(two),
+                three: {'error': 'history_http_500'},
+                four: recent_history(four),
+            })
+            self.used = []
+        async def evaluate(self, js, *args):
+            if args:
+                self.used.append(args[0])
+            return await super().evaluate(js, *args)
+    page = RecentPage()
+    result = await resolve_recent_page(page, MARKER)
+    assert result == {
+        'chat_url': CHAT_URL, 'verification': 'assistant_message',
+        'evidence_verified': True, 'matches': 1,
+    }
+    # A confirmed recent match must not trigger scanning the entire archive.
+    assert four not in page.used

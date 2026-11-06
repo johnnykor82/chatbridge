@@ -4,6 +4,12 @@
 
 ## English
 
+### v0.2.0-beta.18 — Preserve verified Watcher chat destination (2026-11-06)
+
+- On independent jkmac beta.17, authenticated provider chat inventory returned 200 and the most recent conversation verified the exact marker in its assistant and user messages, but a later unrelated history timeout invalidated the positive result. Beta.18 checks a bounded recency group, rejects multiple verified matches within the inspected group, then stops once an exact assistant marker and real provider conversation ID have been verified.
+- Unavailable history cannot erase a verified assistant destination. Missing/ambiguous evidence, provider rate limits and authorization denials remain fail-closed. No user URL, no new chat messages during discovery. Ruff and 236 offline tests PASS; independent live acceptance required.
+
+
 ### v0.2.0-beta.17 — Authenticated recent-chat inventory fallback (2026-11-06)
 
 - Beta.16 live jkmac marker lookup still returned HTTP 502 and indexed-search click timeouts. This beta adds one bounded read-only same-origin recent-conversation list fetch inside ChatBridge-owned authenticated Chrome when ordinary sidebar candidates cannot verify the marker. The full marker, actual provider conversation ID and author role are required for each candidate; neither the agent nor owner provides a URL.
@@ -57,6 +63,12 @@ ChatBridge is a standalone macOS HTTP gateway for a user-authorized ChatGPT web 
 **Installation:** use this repository's README and `./install.sh` after reviewing source. No secrets or private browser profiles belong in GitHub.
 
 ## Русский
+
+### v0.2.0-beta.18 — Не терять подтверждённый чат Watcher (06.11.2026)
+
+- Живой тест beta.17 показал, что первая запись списка разговоров уже содержала точную метку в сообщении ассистента, но тайм-аут более старого чата отменял результат. Исправлен приоритет подтверждённого совпадения и ограничен перебор несвязанных разговоров.
+- Проверка полной метки, фактического ID разговора и роли сообщения сохранена; 429 и ошибки авторизации не обходятся. Ruff и 236 тестов PASS. Требуется проверка на jkmac.
+
 
 ### v0.2.0-beta.17 — Резервный список последних чатов (06.11.2026)
 

@@ -424,22 +424,30 @@ async def resolve_recent_page(page, marker):
 
     async def scan(urls):
         nonlocal incomplete
-        for candidate in urls:
-            if candidate in scanned or len(scanned) >= 20:
-                continue
-            scanned.add(candidate)
-            expected_cid = candidate.rsplit("/c/", 1)[-1]
-            try:
-                history = await asyncio.wait_for(
-                    page.evaluate(BACKEND_JS, expected_cid), timeout=6
-                )
-                role = verified_role_from_history(history, expected_cid, marker)
-            except (RecentScanUnavailable, TimeoutError):
-                incomplete += 1
-                continue
-            if role:
-                found[candidate] = role
-
+        # Check a small current-recency group for duplicate verified markers.
+        # Once the high-entropy marker is verified in an assistant message,
+        # unrelated older chat histories are unnecessary; a later history
+        # timeout must not erase a verified destination.
+        for group_start in range(0, len(urls), 3):
+            for candidate in urls[group_start:group_start + 3]:
+                if candidate in scanned or len(scanned) >= 20:
+                    continue
+                scanned.add(candidate)
+                expected_cid = candidate.rsplit("/c/", 1)[-1]
+                try:
+                    history = await asyncio.wait_for(
+                        page.evaluate(BACKEND_JS, expected_cid), timeout=6
+                    )
+                    role = verified_role_from_history(history, expected_cid, marker)
+                except (RecentScanUnavailable, TimeoutError):
+                    incomplete += 1
+                    continue
+                if role:
+                    found[candidate] = role
+            if len(found) > 1:
+                raise AmbiguousMarker("Marker appears in multiple verified recent chats")
+            if any(role == "assistant_message" for role in found.values()):
+                return
     await scan(candidates)
     if not found and len(scanned) < 20:
         try:
@@ -456,7 +464,7 @@ async def resolve_recent_page(page, marker):
     )
     if len(found) > 1:
         raise AmbiguousMarker("Marker appears in more than one verified chat")
-    if incomplete:
+    if incomplete and not any(role == "assistant_message" for role in found.values()):
         raise RecentScanUnavailable("Recent conversation verification incomplete")
     if not found:
         raise MarkerNotFound("Exact marker absent from verified recent conversations")
