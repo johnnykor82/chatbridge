@@ -3,6 +3,11 @@
 **Language:** [English](#english) · [Русский](#русский)
 
 ## English
+## v0.2.0-beta.19 — Short search markers, legacy compatible (2026-11-06)
+
+- ChatBridge accepts a compact 18-character marker (WC plus 16 lowercase hexadecimal characters) alongside legacy WATCHER-CHAT plus 32 hex. Exact message boundary, real provider conversation identity, sender role, and unique match remain mandatory.
+- New parser is tested with 5,800-event-safe source mocks and live lookup is a separate acceptance gate. This release changes ONLY ChatBridge format validation, not Watcher, existing pending tasks, history, or browser behavior. Do not claim Watcher format migration until a real provider assistant-message lookup succeeds.
+
 
 ### v0.2.0-beta.18 — Preserve verified Watcher chat destination (2026-11-06)
 
@@ -63,6 +68,11 @@ ChatBridge is a standalone macOS HTTP gateway for a user-authorized ChatGPT web 
 **Installation:** use this repository's README and `./install.sh` after reviewing source. No secrets or private browser profiles belong in GitHub.
 
 ## Русский
+### v0.2.0-beta.19 — Короткие метки поиска (2026-11-06)
+
+- Поддержка метки длиной 18 символов (WC и 16 строчных шестнадцатеричных символов) с сохранением прежнего формата WATCHER-CHAT плюс 32 символа. Совпадение принимается только после полной проверки роли автора, ID чата провайдера и уникальности.
+- Обновлён только ChatBridge. Watcher и ожидающие задания не меняются до успешного реального поиска короткой метки, проведённого независимо на jkmac.
+
 
 ### v0.2.0-beta.18 — Не терять подтверждённый чат Watcher (06.11.2026)
 

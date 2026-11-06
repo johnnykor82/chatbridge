@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from urllib.parse import urlsplit
 
-MARKER = re.compile(r"WATCHER-CHAT-[a-f0-9]{32}\Z")
+MARKER = re.compile(r"(?:WATCHER-CHAT-[a-f0-9]{32}|WC[a-f0-9]{16})\Z")
 CHAT = re.compile(r"/c/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\Z", re.I)
 PROJECT = re.compile(
     r"/g/(g-p-[0-9a-f]{32})(?:-[a-z0-9-]+)?/c/"
@@ -26,7 +26,7 @@ class AmbiguousMarker(ValueError):
 
 def validate_marker(value):
     if not isinstance(value, str) or not MARKER.fullmatch(value):
-        raise ValueError("Expected WATCHER-CHAT- followed by exactly 32 lowercase hex characters")
+        raise ValueError("Expected WC+16 lowercase hex or legacy WATCHER-CHAT-+32 lowercase hex marker")
     return value
 
 

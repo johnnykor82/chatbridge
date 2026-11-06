@@ -413,3 +413,52 @@ async def test_verified_recent_assistant_survives_unrelated_history_failure():
     }
     # A confirmed recent match must not trigger scanning the entire archive.
     assert four not in page.used
+
+
+def test_short_marker_live_contract():
+    from chatbridge.marker_lookup import (
+        RecentScanUnavailable,
+        message_contains_marker,
+        verified_role_from_history,
+    )
+
+    short = 'WC4f9e8c16d7a23b50'
+    assert validate_marker(short) == short
+    assert message_contains_marker('prefix ' + short + ' suffix', short)
+    for bad in ('WC' + 'a' * 15, 'WC' + 'a' * 17, 'wc' + 'a' * 16,
+                'WC' + 'g' * 16, short.upper(), short + '-tail'):
+        with pytest.raises(ValueError):
+            validate_marker(bad)
+    assert not message_contains_marker('x' + short, short)
+    assert not message_contains_marker(short + 'z', short)
+    assert not message_contains_marker(short + '-tail', short)
+    cid = '11111111-1111-4111-8111-111111111111'
+    payload = {'provider_conversation_id': cid,
+               'chain': [{'role': 'assistant', 'content': 'Visible ' + short}]}
+    assert verified_role_from_history(payload, cid, short) == 'assistant_message'
+    with pytest.raises(RecentScanUnavailable):
+        verified_role_from_history(payload, '22222222-2222-4222-8222-222222222222', short)
+
+
+@pytest.mark.asyncio
+async def test_short_marker_http_contract(tmp_path: Path):
+    short = 'WC4f9e8c16d7a23b50'
+    store = Store(tmp_path / 'short-lookup.db')
+    transport = MockTransport()
+    async def verified_assistant(marker):
+        assert marker == short
+        return {'chat_url': CHAT_URL, 'evidence_verified': True,
+                'verification': 'assistant_message', 'matches': 1}
+    transport.resolve_chat_marker = verified_assistant
+    engine = GatewayEngine(store, transport)
+    await engine.start()
+    client = TestClient(TestServer(make_app(store, engine, Settings(transport='mock'))))
+    await client.start_server()
+    try:
+        response = await client.post('/v1/chats/resolve-marker', json={'marker': short})
+        assert response.status == 200
+        assert (await response.json())['verification'] == 'assistant_message'
+    finally:
+        await client.close()
+        await engine.stop()
+        store.close()
