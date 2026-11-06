@@ -1,6 +1,8 @@
 """BF23-BF2: notification receipt must not wait for an assistant reply."""
 import asyncio
+
 import pytest
+
 from chatbridge.engine import GatewayEngine
 from chatbridge.model import TransportEvent
 from chatbridge.store import Store
