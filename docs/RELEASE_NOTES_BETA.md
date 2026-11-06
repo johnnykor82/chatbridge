@@ -3,6 +3,11 @@
 **Language:** [English](#english) · [Русский](#русский)
 
 ## English
+### v0.2.0-beta.20 — Fix ChatGPT search dialog activation (2026-11-06)
+
+- Real jkmac beta.19 short-marker lookup could not open the indexed-search dialog because the visible Search Chats button timed out on click. Beta.20 first accepts an existing normal search dialog, otherwise tries one standard button click followed by a single browser Meta+K shortcut if needed.
+- No force-click, direct CDP, authorization bypass, provider message sends or rate-limit workaround. The full short/legacy marker, assistant role and provider conversation identity must still verify exactly. Real live acceptance remains a separate gate before any Watcher marker change.
+
 ## v0.2.0-beta.19 — Short search markers, legacy compatible (2026-11-06)
 
 - ChatBridge accepts a compact 18-character marker (WC plus 16 lowercase hexadecimal characters) alongside legacy WATCHER-CHAT plus 32 hex. Exact message boundary, real provider conversation identity, sender role, and unique match remain mandatory.
@@ -68,6 +73,11 @@ ChatBridge is a standalone macOS HTTP gateway for a user-authorized ChatGPT web 
 **Installation:** use this repository's README and `./install.sh` after reviewing source. No secrets or private browser profiles belong in GitHub.
 
 ## Русский
+### v0.2.0-beta.20 — Восстановление открытия поиска чатов (2026-11-06)
+
+- При поиске короткой метки ChatBridge beta.19 на jkmac штатная кнопка поиска ChatGPT зависала на click timeout. Теперь используется уже открытое поле либо обычный клик, при необходимости однократно Cmd+K.
+- Без принудительного клика, прямого CDP, отправки сообщений или обхода ограничений. Строгая проверка роли, ID чата и полной метки сохраняется. Watcher не меняется до успешной live-проверки.
+
 ### v0.2.0-beta.19 — Короткие метки поиска (2026-11-06)
 
 - Поддержка метки длиной 18 символов (WC и 16 строчных шестнадцатеричных символов) с сохранением прежнего формата WATCHER-CHAT плюс 32 символа. Совпадение принимается только после полной проверки роли автора, ID чата провайдера и уникальности.

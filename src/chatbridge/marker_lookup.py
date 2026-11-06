@@ -60,6 +60,61 @@ def message_contains_marker(text, marker):
 user_message_contains_marker = message_contains_marker
 
 
+async def activate_chat_search(page):
+    """Activate ChatGPT's ordinary search UI without force-clicking controls.
+
+    Search dialog may already be mounted. If the visible sidebar control
+    cannot be clicked normally, attempt one documented browser keyboard
+    shortcut and then fail closed if no real dialog input appears.
+    """
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+    async def dialog_field():
+        dialogs = page.locator('[role="dialog"]')
+        if await dialogs.count() and await dialogs.last.is_visible():
+            dialog = dialogs.last
+            fields = (
+                dialog.get_by_role("searchbox"),
+                dialog.locator('input[role="combobox"]'),
+                dialog.locator('input[type="search"]'),
+                dialog.locator("input"),
+            )
+            for item in fields:
+                if await item.count() and await item.first.is_visible():
+                    return item.first
+        return None
+
+    existing = await dialog_field()
+    if existing:
+        return existing
+
+    buttons = (
+        page.get_by_role("button", name=re.compile(
+            r"search chats|поиск чатов|^поиск$|^search$", re.I)),
+        page.locator('[data-testid="search-chats-button"]'),
+        page.locator('[data-testid="sidebar-search-button"]'),
+    )
+    for button in buttons:
+        if await button.count() and await button.first.is_visible():
+            try:
+                await button.first.click(timeout=2000)
+            except PlaywrightTimeoutError:
+                pass  # A hidden/covered button is not a policy authorization.
+            break
+    await page.wait_for_timeout(400)
+    field = await dialog_field()
+    if field:
+        return field
+
+    # No force click, no CDP, no custom provider endpoint, no message send.
+    await page.keyboard.press("Meta+k")
+    await page.wait_for_timeout(600)
+    field = await dialog_field()
+    if field:
+        return field
+    raise RuntimeError("ChatGPT search dialog input unavailable")
+
+
 async def resolve_in_browser(browser, marker, observe=None, new_page=None):
     """Search the built-in UI, verify exact USER message in each candidate.
 
@@ -78,33 +133,7 @@ async def resolve_in_browser(browser, marker, observe=None, new_page=None):
         await page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=30000)
         if urlsplit(page.url).netloc != "chatgpt.com":
             raise RuntimeError("ChatGPT session is not authenticated")
-        buttons = [
-            page.get_by_role("button", name=re.compile(r"search chats|поиск чатов|^поиск$|^search$", re.I)),
-            page.locator('[data-testid="search-chats-button"]'),
-            page.locator('[data-testid="sidebar-search-button"]'),
-        ]
-        for button in buttons:
-            if await button.count() and await button.first.is_visible():
-                await button.first.click(timeout=4500)
-                break
-        else:
-            raise RuntimeError("ChatGPT search control not found; UI changed")
-        # Search UI animates into place; checking count immediately after
-        # clicking is a race (observed on the real ChatGPT website).
-        await page.wait_for_timeout(1000)
-        fields = [
-            page.get_by_role("searchbox"),
-            page.get_by_placeholder(re.compile(r"search|поиск", re.I)),
-            page.locator('[role="dialog"] input'),
-            page.locator('input[role="combobox"]'),
-            page.locator('input[type="search"]'),
-        ]
-        for field in fields:
-            if await field.count() and await field.first.is_visible():
-                await field.first.fill(marker, timeout=5000)
-                break
-        else:
-            raise RuntimeError("ChatGPT search input not found; UI changed")
+        field = await activate_chat_search(page)
         await page.wait_for_timeout(2200)
         # UI can debounce the search, but never retry the HTTP query in a tight loop.
         dialogs = page.locator('[role="dialog"]')
