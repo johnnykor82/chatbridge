@@ -338,6 +338,71 @@ def verified_role_from_history(history, expected_cid, marker):
 
 
 
+
+RECENT_LIST_JS = r"""async () => {
+  try {
+    const session = await fetch('/api/auth/session', {credentials:'include'})
+      .then(r => r.json());
+    if (!session?.accessToken) return {error:'not_authenticated'};
+    const response = await fetch(
+      '/backend-api/conversations?offset=0&limit=28&order=updated', {
+      credentials:'include', cache:'no-store',
+      headers:{authorization:'Bearer '+session.accessToken}
+    });
+    if (!response.ok) return {
+      error:'recent_http_'+response.status,
+      retry_after:response.headers.get('retry-after')
+    };
+    const payload=await response.json();
+    const rows=Array.isArray(payload.items) ? payload.items :
+      (Array.isArray(payload.conversations) ? payload.conversations : null);
+    if (!rows) return {error:'malformed_recent_list'};
+    return {ids:rows.slice(0,28).map(x=>x.id||x.conversation_id||null)};
+  } catch(e) { return {error:'recent_exception_'+e.name}; }
+}"""
+
+
+def provider_recent_candidates(data, *, limit=12):
+    """Accept only UUID conversation IDs, never caller-supplied destinations."""
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        raise ValueError("Expected provider conversation items list")
+    if not isinstance(limit, int) or not 1 <= limit <= 24:
+        raise ValueError("Invalid recent provider candidate limit")
+    urls = []
+    for item in data["items"][:40]:
+        if not isinstance(item, dict):
+            continue
+        ident = item.get("id") or item.get("conversation_id")
+        if not isinstance(ident, str):
+            continue
+        candidate = canonical_candidate("https://chatgpt.com/c/" + ident)
+        if candidate and candidate not in urls:
+            urls.append(candidate)
+        if len(urls) >= limit:
+            break
+    return urls
+
+
+async def provider_recent_chat_urls(page):
+    """At most one read-only recent index fetch from existing Chrome context."""
+    import asyncio
+
+    result = await asyncio.wait_for(page.evaluate(RECENT_LIST_JS), timeout=10)
+    if not isinstance(result, dict):
+        raise RecentScanUnavailable("Recent list response invalid")
+    error = result.get("error", "")
+    if error == "recent_http_429":
+        from .rate_limit import ProviderRateLimitError
+        raise ProviderRateLimitError("Provider recent conversation list rate limited")
+    if error in ("not_authenticated", "recent_http_401", "recent_http_403"):
+        raise PermissionError("Recent conversation listing unauthorized")
+    if error:
+        raise RecentScanUnavailable("Recent conversation list unavailable")
+    return provider_recent_candidates(
+        {"items": [{"id": cid} for cid in result.get("ids", [])]}, limit=12
+    )
+
+
 async def resolve_recent_page(page, marker):
     """Verify recent ChatGPT sidebar links on ONE authenticated page."""
     import asyncio
@@ -354,19 +419,41 @@ async def resolve_recent_page(page, marker):
         hrefs.append(await locator.nth(i).get_attribute("href"))
     candidates = recent_chat_candidates(hrefs, limit=12)
     found = {}
+    scanned = set()
     incomplete = 0
-    for candidate in candidates:
-        expected_cid = candidate.rsplit("/c/", 1)[-1]
+
+    async def scan(urls):
+        nonlocal incomplete
+        for candidate in urls:
+            if candidate in scanned or len(scanned) >= 20:
+                continue
+            scanned.add(candidate)
+            expected_cid = candidate.rsplit("/c/", 1)[-1]
+            try:
+                history = await asyncio.wait_for(
+                    page.evaluate(BACKEND_JS, expected_cid), timeout=6
+                )
+                role = verified_role_from_history(history, expected_cid, marker)
+            except (RecentScanUnavailable, TimeoutError):
+                incomplete += 1
+                continue
+            if role:
+                found[candidate] = role
+
+    await scan(candidates)
+    if not found and len(scanned) < 20:
         try:
-            history = await asyncio.wait_for(
-                page.evaluate(BACKEND_JS, expected_cid), timeout=6
-            )
-            role = verified_role_from_history(history, expected_cid, marker)
-        except (RecentScanUnavailable, TimeoutError):
+            provider_candidates = await provider_recent_chat_urls(page)
+        except RecentScanUnavailable:
             incomplete += 1
-            continue
-        if role:
-            found[candidate] = role
+            provider_candidates = []
+        await scan(provider_candidates)
+    import logging
+    logging.getLogger(__name__).info(
+        "Recent marker discovery sidebar_candidates=%d verified_candidates=%d "
+        "history_unavailable=%d inspected=%d",
+        len(candidates), len(found), incomplete, len(scanned),
+    )
     if len(found) > 1:
         raise AmbiguousMarker("Marker appears in more than one verified chat")
     if incomplete:

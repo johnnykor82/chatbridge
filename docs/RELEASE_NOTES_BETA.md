@@ -4,6 +4,12 @@
 
 ## English
 
+### v0.2.0-beta.17 — Authenticated recent-chat inventory fallback (2026-11-06)
+
+- Beta.16 live jkmac marker lookup still returned HTTP 502 and indexed-search click timeouts. This beta adds one bounded read-only same-origin recent-conversation list fetch inside ChatBridge-owned authenticated Chrome when ordinary sidebar candidates cannot verify the marker. The full marker, actual provider conversation ID and author role are required for each candidate; neither the agent nor owner provides a URL.
+- Provider 429 and authorization failures stop instead of bypassing cooldowns. Candidate/history checks remain bounded, no chat message is sent during lookup, and diagnostic logs contain only counts. 235 offline tests and lint pass; independent live acceptance is still required.
+
+
 ### v0.2.0-beta.16 — Faster verified chat discovery (2026-11-06)
 
 - Live beta.15 testing found the first recent-chat fallback could spend 100 seconds opening candidate conversations one by one, returning HTTP 502 instead of resolving. Beta.16 reuses ONE managed browser page and verifies recent candidates via the existing provider conversation history reader, requiring the actual provider conversation ID, full marker and verified author role. No manual URL or extra chat sends.
@@ -51,6 +57,12 @@ ChatBridge is a standalone macOS HTTP gateway for a user-authorized ChatGPT web 
 **Installation:** use this repository's README and `./install.sh` after reviewing source. No secrets or private browser profiles belong in GitHub.
 
 ## Русский
+
+### v0.2.0-beta.17 — Резервный список последних чатов (06.11.2026)
+
+- После ошибок поиска в живом тесте beta.16 ChatBridge добавляет один ограниченный запрос списка последних разговоров в собственной авторизованной сессии, если обычная боковая панель не дала подтверждения. Для каждого кандидата строго проверяются исходный идентификатор, полная метка и роль сообщения. Передавать URL вручную не требуется.
+- 429 и ошибки авторизации не обходятся; отправок сообщений во время поиска нет. 235 тестов прошли, сквозной живой тест нужен отдельно.
+
 
 ### v0.2.0-beta.16 — Быстрый проверенный поиск чатов (06.11.2026)
 

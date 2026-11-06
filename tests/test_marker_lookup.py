@@ -151,8 +151,10 @@ class RecentSidebarPage:
                 return self.hrefs[index]
         return Link()
 
-    async def evaluate(self, js, cid):
-        return self.history[cid]
+    async def evaluate(self, js, *args):
+        if not args:
+            return {'ids': list(self.history)}
+        return self.history[args[0]]
 
     async def wait_for_timeout(self, ms):
         pass
@@ -325,3 +327,60 @@ def test_recent_history_requires_real_provider_id_and_exact_assistant_role():
         verified_role_from_history({**valid, 'provider_conversation_id': None}, cid, MARKER)
     with pytest.raises(RuntimeError, match='identity'):
         verified_role_from_history({**valid, 'provider_conversation_id': 'other'}, cid, MARKER)
+
+
+def test_provider_recent_ids_are_bounded_canonical_candidates():
+    from chatbridge.marker_lookup import provider_recent_candidates
+    raw = {'items': [
+        {'id': '11111111-1111-4111-8111-111111111111'},
+        {'id': '11111111-1111-4111-8111-111111111111'},
+        {'id': '22222222-2222-4222-8222-222222222222'},
+        {'id': 'not-a-uuid'}, {'id': 'https://evil.invalid'},
+    ]}
+    assert provider_recent_candidates(raw, limit=2) == [
+        CHAT_URL,
+        'https://chatgpt.com/c/22222222-2222-4222-8222-222222222222',
+    ]
+    assert provider_recent_candidates({'items': []}) == []
+    with pytest.raises(ValueError):
+        provider_recent_candidates({'items': 'malformed'})
+
+
+@pytest.mark.asyncio
+async def test_provider_recent_list_429_is_never_downgraded_to_index_retry():
+    from chatbridge.marker_lookup import provider_recent_chat_urls
+    from chatbridge.rate_limit import ProviderRateLimitError
+    class Page:
+        async def evaluate(self, js):
+            return {'error': 'recent_http_429', 'retry_after': '50'}
+    with pytest.raises(ProviderRateLimitError):
+        await provider_recent_chat_urls(Page())
+
+
+@pytest.mark.asyncio
+async def test_provider_recent_inventory_resolves_marker_if_sidebar_empty():
+    from chatbridge.marker_lookup import resolve_recent_page
+    one = CHAT_URL.rsplit('/c/', 1)[-1]
+    two = '22222222-2222-4222-8222-222222222222'
+    page = RecentSidebarPage({
+        one: recent_history(one, MARKER), two: recent_history(two),
+    })
+    page.hrefs = []
+    result = await resolve_recent_page(page, MARKER)
+    assert result['verification'] == 'assistant_message'
+    assert result['chat_url'] == CHAT_URL
+    assert page.loaded == []
+
+
+@pytest.mark.asyncio
+async def test_provider_429_aborts_when_sidebar_is_empty():
+    from chatbridge.marker_lookup import resolve_recent_page
+    from chatbridge.rate_limit import ProviderRateLimitError
+    class Page(RecentSidebarPage):
+        async def evaluate(self, js, *args):
+            if not args:
+                return {'error': 'recent_http_429'}
+            return await super().evaluate(js, *args)
+    page = Page({})
+    with pytest.raises(ProviderRateLimitError):
+        await resolve_recent_page(page, MARKER)
