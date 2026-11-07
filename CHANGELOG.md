@@ -1,3 +1,11 @@
+## 0.2.0b21 — 2026-11-07
+
+- Use a full WC/legacy marker query before reading ChatGPT Search result links; never treat unqueried recent suggestions as matches.
+- Try multiple visible Search buttons normally if the first is covered; no forced clicks or CDP bypass.
+- Add bounded allowlisted DOM-only stage telemetry from resolver-owned Chrome on missing sidebar/search UI. Never log message text, marker, chat URL/ID or credentials.
+- Preserve unique verified provider conversation/assistant role requirements, existing authentication, rate limits, and installed browser state.
+- BF29 regression tests and public beta release gates tracked in the private SDD plan.
+
 ## 0.2.0b12 — 2026-11-03
 
 - Publish previously tested CB-READY-01: explicit authenticated managed browser verification via POST /v1/browser/verify.

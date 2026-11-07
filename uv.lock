@@ -199,7 +199,7 @@ wheels = [
 
 [[package]]
 name = "chatbridge-gateway"
-version = "0.2.0b20"
+version = "0.2.0b21"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },

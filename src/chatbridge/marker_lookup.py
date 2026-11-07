@@ -60,6 +60,67 @@ def message_contains_marker(text, marker):
 user_message_contains_marker = message_contains_marker
 
 
+# Only safe counts/booleans from the exact resolver-owned page. Never include
+# a marker, URL, conversation ID/title, DOM HTML, or user/assistant text.
+SEARCH_DOM_COUNTS_JS = """() => {
+    const visible = el => !!(el.getClientRects().length &&
+        getComputedStyle(el).visibility !== 'hidden');
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'))
+        .filter(visible);
+    const buttons = Array.from(document.querySelectorAll(
+        'button[aria-label="Поиск"],button[aria-label="Search"],' +
+        'button[data-testid="search-chats-button"],' +
+        'button[data-testid="sidebar-search-button"]'));
+    const inputs = dialogs.flatMap(el => Array.from(el.querySelectorAll(
+        'input[role="combobox"],input[type="search"],[role="searchbox"]')));
+    const links = Array.from(document.querySelectorAll(
+        'a[href^="/c/"],a[href^="/g/"]'));
+    return {
+        ready: document.readyState,
+        sidebar_links: links.filter(el => !el.closest('[role="dialog"]')).length,
+        search_buttons: buttons.length,
+        visible_search_buttons: buttons.filter(visible).length,
+        dialogs: dialogs.length,
+        visible_comboboxes: inputs.filter(visible).length,
+        dialog_links: dialogs.reduce((n, el) =>
+            n + el.querySelectorAll('a[href^="/c/"],a[href^="/g/"]').length, 0)
+    };
+}"""
+
+
+async def log_search_dom(page, stage):
+    """Log only allowlisted DOM shape, never page contents or a marker.
+
+    Diagnostic collection must not affect the user's search or auth.
+    """
+    import asyncio
+    import logging
+
+    allowed = ("sidebar_links", "search_buttons", "visible_search_buttons",
+               "dialogs", "visible_comboboxes", "dialog_links")
+    safe_stage = stage if stage in (
+        "recent_sidebar", "search_before_click", "search_click_timeout",
+        "search_dialog_missing", "search_filled", "search_unfiltered",
+        "search_no_results") else "unknown"
+    try:
+        raw = await asyncio.wait_for(page.evaluate(SEARCH_DOM_COUNTS_JS), timeout=3)
+        if not isinstance(raw, dict):
+            raise ValueError("Invalid shape")
+        safe = {key: min(max(raw[key], 0), 1000) for key in allowed
+                if type(raw.get(key)) is int}
+        ready = raw.get("ready")
+        if ready in ("loading", "interactive", "complete"):
+            safe["ready"] = ready
+    except Exception:
+        safe = {"ready": "unavailable"}
+    level = logging.WARNING if safe_stage in (
+        "search_dialog_missing", "search_click_timeout",
+        "search_unfiltered", "search_no_results") else logging.INFO
+    logging.getLogger(__name__).log(
+        level, "Marker lookup DOM stage=%s counts=%s", safe_stage, safe)
+    return safe
+
+
 async def activate_chat_search(page):
     """Activate ChatGPT's ordinary search UI without force-clicking controls.
 
@@ -94,17 +155,24 @@ async def activate_chat_search(page):
         page.locator('[data-testid="search-chats-button"]'),
         page.locator('[data-testid="sidebar-search-button"]'),
     )
-    for button in buttons:
-        if await button.count() and await button.first.is_visible():
+    await log_search_dom(page, "search_before_click")
+    # The current ChatGPT sidebar contains multiple Search buttons. The
+    # first matching control may be covered while a second is clickable.
+    for buttons_locator in buttons:
+        for index in range(min(await buttons_locator.count(), 6)):
+            button = (buttons_locator.first if index == 0
+                      else buttons_locator.nth(index))
+            if not await button.is_visible():
+                continue
             try:
-                await button.first.click(timeout=2000)
+                await button.click(timeout=2000)
             except PlaywrightTimeoutError:
-                pass  # A hidden/covered button is not a policy authorization.
-            break
-    await page.wait_for_timeout(400)
-    field = await dialog_field()
-    if field:
-        return field
+                await log_search_dom(page, "search_click_timeout")
+                continue  # Never use force=True or direct CDP.
+            await page.wait_for_timeout(250)
+            field = await dialog_field()
+            if field:
+                return field
 
     # No force click, no CDP, no custom provider endpoint, no message send.
     await page.keyboard.press("Meta+k")
@@ -112,6 +180,7 @@ async def activate_chat_search(page):
     field = await dialog_field()
     if field:
         return field
+    await log_search_dom(page, "search_dialog_missing")
     raise RuntimeError("ChatGPT search dialog input unavailable")
 
 
@@ -134,39 +203,39 @@ async def resolve_in_browser(browser, marker, observe=None, new_page=None):
         if urlsplit(page.url).netloc != "chatgpt.com":
             raise RuntimeError("ChatGPT session is not authenticated")
         field = await activate_chat_search(page)
+        # ChatGPT's just-opened modal normally lists six RECENT chats.
+        # They are not search results. Issue the actual full query FIRST.
+        await field.first.fill(marker, timeout=5000)
+        await log_search_dom(page, "search_filled")
         await page.wait_for_timeout(2200)
-        # UI can debounce the search, but never retry the HTTP query in a tight loop.
         dialogs = page.locator('[role="dialog"]')
         if not await dialogs.count():
+            await log_search_dom(page, "search_dialog_missing")
             raise RuntimeError("ChatGPT search results dialog is unavailable")
         links = dialogs.last.locator('a[href^="/c/"], a[href^="/g/"]')
+        count = await links.count()
+        # Wait for the search index or modal to replace the initial
+        # six recent-chat suggestions. Hard-bound the wait and candidates.
         for _ in range(8):
-            if await links.count():
+            if 0 < count <= 5:
                 break
             await page.wait_for_timeout(850)
-        count = await links.count()
-        if count == 0:
-            # ChatGPT Search indexes standalone terms more consistently than
-            # punctuation-heavy markers. Search the high-entropy 32-hex part
-            # as a bounded fallback; still verify the full marker in the chat.
-            await field.first.fill(marker.rsplit("-", 1)[-1], timeout=5000)
+            count = await links.count()
+        if count > 5:
+            await log_search_dom(page, "search_unfiltered")
+            raise RuntimeError("ChatGPT search results still show unfiltered chats")
+        if count == 0 and marker.startswith("WATCHER-CHAT-"):
+            # Only legacy 32hex indexing fallback, never repeat the identical
+            # WC+16 query. Candidate verification still checks the full marker.
+            await field.first.fill(marker.removeprefix("WATCHER-CHAT-"), timeout=5000)
             await page.wait_for_timeout(3600)
             count = await links.count()
         if count == 0:
-            # Diagnostic metadata only: never log the search term or chat text.
-            import logging
-            attributes = await page.locator('[role="dialog"]').last.evaluate("""el =>
-                Array.from(el.querySelectorAll('a, [role=option], input')).slice(0,12)
-                .map(n => ({tag:n.tagName,role:n.getAttribute('role'),
-                  href:n.getAttribute('href'),type:n.getAttribute('type')}))""")
-            logging.getLogger(__name__).warning(
-                "Marker search no results; current_url=%s; children=%s",
-                page.url.split("?", 1)[0],
-                [{k:(v if k!='href' or v is None else bool(v)) for k,v in a.items()}
-                 for a in attributes],
-            )
+            await log_search_dom(page, "search_no_results")
         if count > 5:
-            raise AmbiguousMarker("More than five results; narrow down the marker")
+            await log_search_dom(page, "search_unfiltered")
+            raise RuntimeError("More than five ChatGPT search results")
+
         candidates = []
         for i in range(count):
             href = await links.nth(i).get_attribute("href")
@@ -447,6 +516,8 @@ async def resolve_recent_page(page, marker):
     for i in range(min(await locator.count(), 48)):
         hrefs.append(await locator.nth(i).get_attribute("href"))
     candidates = recent_chat_candidates(hrefs, limit=12)
+    if not candidates:
+        await log_search_dom(page, "recent_sidebar")
     found = {}
     scanned = set()
     incomplete = 0
