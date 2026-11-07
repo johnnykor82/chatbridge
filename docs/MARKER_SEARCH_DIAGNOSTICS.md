@@ -6,8 +6,8 @@ conversation or sends a message while searching.
 
 Resolution first checks bounded recent sidebar and provider-history candidates.
 If none can be verified, it opens ChatGPT's standard Search Chats dialog, trying
-the visible Search buttons normally in sequence (no forced clicks). It **fills
-the entire marker before looking at search results**. The initial unfiltered
+the visible Search buttons normally in sequence (no forced clicks). It first waits boundedly for Search/sidebar controls to hydrate after page navigation,
+then **fills the entire marker before looking at search results**. The initial unfiltered
 "Recent chats" list is not evidence of a match. Candidate conversations must
 still contain an exact user or assistant message marker and match the provider's
 real conversation ID; Watcher requires an assistant-message match.

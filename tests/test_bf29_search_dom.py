@@ -285,3 +285,78 @@ async def test_dom_telemetry_failure_remains_private_and_never_breaks_lookup(cap
         )
     assert state == {"ready": "unavailable"}
     assert "PRIVATE_CHROME_PROFILE_SECRET" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_wait_for_hydrated_search_controls_before_clicking(monkeypatch):
+    """Live MacServer changed 0/1 sidebar/button to 18/2 while Search was clicked."""
+    events = []
+    page = SearchPage()
+    conversation = ChatPage()
+    pages = [page, conversation]
+
+    async def next_page(_):
+        return pages.pop(0)
+
+    async def ready(_):
+        events.append("ready")
+        return True
+
+    async def activate(_):
+        events.append("activate")
+        return page.field
+
+    monkeypatch.setattr(marker_lookup, "wait_for_search_controls_ready", ready, raising=False)
+    monkeypatch.setattr(marker_lookup, "activate_chat_search", activate)
+    browser = type("Browser", (), {"contexts": [object()]})()
+    result = await marker_lookup.resolve_in_browser(browser, MARKER, new_page=next_page)
+    assert result["verification"] == "assistant_message"
+    assert events[:2] == ["ready", "activate"]
+
+
+@pytest.mark.asyncio
+async def test_hydration_waits_for_sidebar_and_second_search_control():
+    class HydratingPage:
+        def __init__(self):
+            self.step = 0
+            self.waits = 0
+
+        async def evaluate(self, _script):
+            return {
+                "ready": "interactive",
+                "sidebar_links": 0 if self.step < 2 else 18,
+                "search_buttons": 1 if self.step < 2 else 2,
+                "visible_search_buttons": 1,
+                "dialogs": 0,
+                "visible_comboboxes": 0,
+                "dialog_links": 0,
+            }
+
+        async def wait_for_timeout(self, _):
+            self.waits += 1
+            self.step += 1
+
+    page = HydratingPage()
+    assert await marker_lookup.wait_for_search_controls_ready(page) is True
+    assert page.waits == 2
+
+
+@pytest.mark.asyncio
+async def test_hydration_timeout_is_bounded_and_never_bypasses_browser():
+    class NoSidebar:
+        def __init__(self):
+            self.waits = 0
+
+        async def evaluate(self, _):
+            return {
+                "ready": "interactive", "sidebar_links": 0,
+                "search_buttons": 1, "visible_search_buttons": 1,
+                "dialogs": 0, "visible_comboboxes": 0, "dialog_links": 0,
+            }
+
+        async def wait_for_timeout(self, _):
+            self.waits += 1
+
+    page = NoSidebar()
+    assert await marker_lookup.wait_for_search_controls_ready(page) is False
+    assert 2 <= page.waits <= 12

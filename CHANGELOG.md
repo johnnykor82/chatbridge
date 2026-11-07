@@ -1,6 +1,7 @@
 ## 0.2.0b21 — 2026-11-07
 
 - Use a full WC/legacy marker query before reading ChatGPT Search result links; never treat unqueried recent suggestions as matches.
+- Boundedly wait for client-side ChatGPT sidebar/Search hydration before pressing Search; real Mac Server telemetry showed 0 chat links/1 Search button growing to 18 links/2 buttons during the old click.
 - Try multiple visible Search buttons normally if the first is covered; no forced clicks or CDP bypass.
 - Add bounded allowlisted DOM-only stage telemetry from resolver-owned Chrome on missing sidebar/search UI. Never log message text, marker, chat URL/ID or credentials.
 - Preserve unique verified provider conversation/assistant role requirements, existing authentication, rate limits, and installed browser state.

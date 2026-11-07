@@ -101,7 +101,7 @@ async def log_search_dom(page, stage):
     safe_stage = stage if stage in (
         "recent_sidebar", "search_before_click", "search_click_timeout",
         "search_dialog_missing", "search_filled", "search_unfiltered",
-        "search_no_results") else "unknown"
+        "search_no_results", "search_wait", "search_not_ready") else "unknown"
     try:
         raw = await asyncio.wait_for(page.evaluate(SEARCH_DOM_COUNTS_JS), timeout=3)
         if not isinstance(raw, dict):
@@ -115,10 +115,49 @@ async def log_search_dom(page, stage):
         safe = {"ready": "unavailable"}
     level = logging.WARNING if safe_stage in (
         "search_dialog_missing", "search_click_timeout",
-        "search_unfiltered", "search_no_results") else logging.INFO
+        "search_unfiltered", "search_no_results",
+        "search_not_ready") else logging.INFO
     logging.getLogger(__name__).log(
         level, "Marker lookup DOM stage=%s counts=%s", safe_stage, safe)
     return safe
+
+
+async def wait_for_search_controls_ready(page):
+    """Boundedly wait until ChatGPT sidebar/search controls have hydrated.
+
+    domcontentloaded occurs before client-side sidebar mounts. On the real
+    Mac Server browser the DOM changed from 0 links / 1 Search button to
+    18 links / 2 Search buttons after the first click already failed.
+    This is read-only; timeout never authorizes a click bypass.
+    """
+    if not hasattr(page, "evaluate"):
+        return False
+    stable_signature = None
+    stable_count = 0
+    for attempt in range(12):
+        state = await log_search_dom(page, "search_wait")
+        if state.get("dialogs", 0) > 0 and state.get("visible_comboboxes", 0) > 0:
+            return True
+        buttons = state.get("search_buttons", 0)
+        visible = state.get("visible_search_buttons", 0)
+        sidebar = state.get("sidebar_links", 0)
+        if visible > 0 and buttons >= 2 and sidebar >= 1:
+            return True
+        if visible > 0 and state.get("ready") == "complete":
+            signature = (buttons, sidebar)
+            stable_count = stable_count + 1 if signature == stable_signature else 1
+            stable_signature = signature
+            # A truly empty-history account may have no chat links, but its
+            # completed DOM must be stable over multiple sampling intervals.
+            if stable_count >= 4:
+                return True
+        else:
+            stable_count = 0
+            stable_signature = None
+        if attempt < 11:
+            await page.wait_for_timeout(450)
+    await log_search_dom(page, "search_not_ready")
+    return False
 
 
 async def activate_chat_search(page):
@@ -202,6 +241,7 @@ async def resolve_in_browser(browser, marker, observe=None, new_page=None):
         await page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=30000)
         if urlsplit(page.url).netloc != "chatgpt.com":
             raise RuntimeError("ChatGPT session is not authenticated")
+        await wait_for_search_controls_ready(page)
         field = await activate_chat_search(page)
         # ChatGPT's just-opened modal normally lists six RECENT chats.
         # They are not search results. Issue the actual full query FIRST.

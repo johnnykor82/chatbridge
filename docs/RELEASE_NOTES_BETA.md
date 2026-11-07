@@ -6,7 +6,7 @@
 ## v0.2.0-beta.21 — Safe ChatGPT DOM diagnostics and marker search order (2026-11-07)
 
 - Fixed indexed search querying six unfiltered "Recent chats" suggestions as if they were marker results. ChatBridge now enters the complete compact or legacy marker BEFORE inspecting candidates, waits for the built-in search UI to settle, and fails closed if the recent list remains unfiltered.
-- Search dialog activation now retries a bounded set of normally visible Search buttons when the first matching control is covered. A single keyboard shortcut remains the final fallback; no force-click or external CDP takeover.
+- Search waits boundedly for client-side sidebar/Search controls to finish hydrating before clicking (the beta.21 test run saw 0 sidebar links/1 button become 18 links/2 buttons during a failed click). Search dialog activation then retries a bounded set of normally visible Search buttons when the first matching control is covered. A single keyboard shortcut remains the final fallback; no force-click or external CDP takeover.
 - If recent sidebar discovery or search opening fails, record only allowlisted counts and readiness from the actual resolver-owned Playwright page. No user prompt, marker, conversation title/ID/URL, HTML, bearer token, cookie or conversation message is logged.
 - Existing assistant-message evidence and unique provider conversation ID checks remain mandatory; a UI result is only a candidate. No new chat creation or messages. Initial RED regressions and 246 offline tests passed on the isolated development branch; real Mac Server login/search acceptance and independent installation are separate release gates.
 
