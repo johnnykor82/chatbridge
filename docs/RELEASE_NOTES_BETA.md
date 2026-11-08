@@ -1,3 +1,6 @@
+## v0.2.0-beta.22 — Local diagnostic candidate (2026-11-08)
+Search-first marker discovery. Timed UI navigation/hydration/search/index wait/verification and fallback recent histories. Result source is recorded without marker or chat content. Candidate is not yet an official public release.
+
 # ChatBridge — Beta release notes
 
 **Language:** [English](#english) · [Русский](#русский)

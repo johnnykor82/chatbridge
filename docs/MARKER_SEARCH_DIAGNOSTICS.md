@@ -28,3 +28,22 @@ retry its 32hex segment as an index term; full message verification remains
 mandatory. A compact WC+16 marker does not repeat the same query.
 The independent real-provider lookup is a separate acceptance gate; offline
 tests alone do not prove the ChatGPT web interface is searchable.
+
+## BF30: diagnostic timing (local beta22 candidate)
+
+Lookup order: authenticated ChatGPT Search UI first. On a confirmed no-match or strictly
+classified recoverable UI failure/timeout, verify recent sidebar chats then the bounded
+provider recent-list fallback. Rate limits, authorization failures, ambiguous or mismatched
+identities do not trigger unsafe fallback.
+
+Each request writes correlated INFO records: `trace=<random 8 hex>`, a fixed `stage`,
+`status`, monotonic `elapsed_ms`, bounded `count`, and fixed `source`.
+Search phases include ui_navigation, ui_hydration, ui_activation, ui_query,
+ui_index_wait, ui_candidates, ui_candidate_navigation, ui_candidate_history and
+ui_candidate_verify. Recent phases include recent_navigation, recent_sidebar,
+recent_provider_list, recent_provider_candidates, recent_history, recent_scan,
+recent_match. Strategy spans search_total, recent_total, and total are always
+reported (including a failed lookup). A verified match is tagged
+source=search_index or source=recent, and recent_match distinguishes
+recent_sidebar/recent_provider. No marker, URL, conversation ID, message text,
+headers, HTML, or raw exception string is logged.

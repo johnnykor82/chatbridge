@@ -5,7 +5,12 @@ No direct ChatGPT credentials or private endpoints are used by the Watcher.
 """
 from __future__ import annotations
 
+import logging
 import re
+import secrets
+import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from urllib.parse import urlsplit
 
 MARKER = re.compile(r"(?:WATCHER-CHAT-[a-f0-9]{32}|WC[a-f0-9]{16})\Z")
@@ -14,6 +19,44 @@ PROJECT = re.compile(
     r"/g/(g-p-[0-9a-f]{32})(?:-[a-z0-9-]+)?/c/"
     r"([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\Z", re.I
 )
+
+
+_TRACE_ID = ContextVar("marker_lookup_trace", default="-")
+_SEARCH_UI_RECOVERABLE = frozenset({
+    "ChatGPT search dialog input unavailable",
+    "ChatGPT search results dialog is unavailable",
+    "ChatGPT search results still show unfiltered chats",
+})
+
+
+def _lookup_event(stage, status, *, started=None, source="-", count=None):
+    """Allowlisted diagnostic fields only; no markers, URLs or message text."""
+    try:
+        ms = round(max(0, time.monotonic() - started) * 1000, 1) if started is not None else -1
+        n = min(max(count, 0), 1000) if type(count) is int else -1
+        logging.getLogger(__name__).info(
+            "Marker lookup timing trace=%s stage=%s status=%s elapsed_ms=%s count=%s source=%s",
+            _TRACE_ID.get(), stage, status, ms, n, source,
+        )
+    except Exception:
+        pass
+
+
+@contextmanager
+def _timed_phase(stage):
+    start = time.monotonic()
+    try:
+        yield
+    except BaseException:
+        _lookup_event(stage, "error", started=start)
+        raise
+    else:
+        _lookup_event(stage, "ok", started=start)
+
+
+async def _timed_await(stage, operation):
+    with _timed_phase(stage):
+        return await operation
 
 
 class MarkerNotFound(LookupError):
@@ -238,15 +281,18 @@ async def resolve_in_browser(browser, marker, observe=None, new_page=None):
     try:
         if observe:
             page.on("response", observe)
-        await page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=30000)
+        await _timed_await("ui_navigation", page.goto(
+            "https://chatgpt.com/", wait_until="domcontentloaded", timeout=30000
+        ))
         if urlsplit(page.url).netloc != "chatgpt.com":
             raise RuntimeError("ChatGPT session is not authenticated")
-        await wait_for_search_controls_ready(page)
-        field = await activate_chat_search(page)
+        await _timed_await("ui_hydration", wait_for_search_controls_ready(page))
+        field = await _timed_await("ui_activation", activate_chat_search(page))
         # ChatGPT's just-opened modal normally lists six RECENT chats.
         # They are not search results. Issue the actual full query FIRST.
-        await field.first.fill(marker, timeout=5000)
+        await _timed_await("ui_query", field.first.fill(marker, timeout=5000))
         await log_search_dom(page, "search_filled")
+        index_started = time.monotonic()
         await page.wait_for_timeout(2200)
         dialogs = page.locator('[role="dialog"]')
         if not await dialogs.count():
@@ -261,6 +307,7 @@ async def resolve_in_browser(browser, marker, observe=None, new_page=None):
                 break
             await page.wait_for_timeout(850)
             count = await links.count()
+        _lookup_event("ui_index_wait", "ok", started=index_started, count=count)
         if count > 5:
             await log_search_dom(page, "search_unfiltered")
             raise RuntimeError("ChatGPT search results still show unfiltered chats")
@@ -285,15 +332,19 @@ async def resolve_in_browser(browser, marker, observe=None, new_page=None):
             target = canonical_candidate(href)
             if target and target not in candidates:
                 candidates.append(target)
+        _lookup_event("ui_candidates", "observed", count=len(candidates))
         if not candidates:
             raise MarkerNotFound("No ChatGPT search results for this marker")
         for target in candidates:
             # The URL in search results is only a candidate, never proof.
             probe = await new_page(browser) if new_page else await context.new_page()
+            candidate_started = time.monotonic()
             try:
                 if observe:
                     probe.on("response", observe)
-                await probe.goto(target, wait_until="domcontentloaded", timeout=30000)
+                await _timed_await("ui_candidate_navigation", probe.goto(
+                    target, wait_until="domcontentloaded", timeout=30000
+                ))
                 if canonical_candidate(probe.url) != target:
                     continue
                 user = probe.locator(
@@ -318,7 +369,9 @@ async def resolve_in_browser(browser, marker, observe=None, new_page=None):
                     # require an exact conversation ID, and check explicit role.
                     from .browser_transport import BACKEND_JS
                     expected_cid = target.rsplit("/c/", 1)[-1]
-                    history = await probe.evaluate(BACKEND_JS, expected_cid)
+                    history = await _timed_await(
+                        "ui_candidate_history", probe.evaluate(BACKEND_JS, expected_cid)
+                    )
                     if history.get("error") == "history_http_429":
                         from .rate_limit import ProviderRateLimitError
                         raise ProviderRateLimitError("ChatGPT history search rate limited")
@@ -340,6 +393,9 @@ async def resolve_in_browser(browser, marker, observe=None, new_page=None):
                     found[target] = role
             finally:
                 await probe.close()
+                _lookup_event("ui_candidate_verify",
+                              "verified" if target in found else "no_match",
+                              started=candidate_started)
         unique = sorted(found)
         if len(unique) > 1:
             raise AmbiguousMarker("Marker appears in more than one verified conversation")
@@ -547,6 +603,7 @@ async def resolve_recent_page(page, marker):
 
     from .browser_transport import BACKEND_JS
 
+    sidebar_started = time.monotonic()
     locator = page.locator('a[href^="/c/"], a[href^="/g/"]')
     for _ in range(4):
         if await locator.count():
@@ -556,13 +613,16 @@ async def resolve_recent_page(page, marker):
     for i in range(min(await locator.count(), 48)):
         hrefs.append(await locator.nth(i).get_attribute("href"))
     candidates = recent_chat_candidates(hrefs, limit=12)
+    _lookup_event("recent_sidebar", "observed", started=sidebar_started,
+                  count=len(candidates))
     if not candidates:
         await log_search_dom(page, "recent_sidebar")
     found = {}
+    found_source = {}
     scanned = set()
     incomplete = 0
 
-    async def scan(urls):
+    async def scan(urls, source):
         nonlocal incomplete
         # Check a small current-recency group for duplicate verified markers.
         # Once the high-entropy marker is verified in an assistant message,
@@ -575,27 +635,33 @@ async def resolve_recent_page(page, marker):
                 scanned.add(candidate)
                 expected_cid = candidate.rsplit("/c/", 1)[-1]
                 try:
-                    history = await asyncio.wait_for(
+                    history = await _timed_await("recent_history", asyncio.wait_for(
                         page.evaluate(BACKEND_JS, expected_cid), timeout=6
-                    )
+                    ))
                     role = verified_role_from_history(history, expected_cid, marker)
                 except (RecentScanUnavailable, TimeoutError):
                     incomplete += 1
                     continue
                 if role:
                     found[candidate] = role
+                    found_source[candidate] = source
             if len(found) > 1:
                 raise AmbiguousMarker("Marker appears in multiple verified recent chats")
             if any(role == "assistant_message" for role in found.values()):
                 return
-    await scan(candidates)
+    await scan(candidates, "recent_sidebar")
     if not found and len(scanned) < 20:
         try:
-            provider_candidates = await provider_recent_chat_urls(page)
+            provider_candidates = await _timed_await(
+                "recent_provider_list", provider_recent_chat_urls(page)
+            )
         except RecentScanUnavailable:
             incomplete += 1
             provider_candidates = []
-        await scan(provider_candidates)
+        _lookup_event("recent_provider_candidates", "observed",
+                      count=len(provider_candidates))
+        await scan(provider_candidates, "recent_provider")
+    _lookup_event("recent_scan", "observed", count=len(scanned))
     import logging
     logging.getLogger(__name__).info(
         "Recent marker discovery sidebar_candidates=%d verified_candidates=%d "
@@ -609,6 +675,7 @@ async def resolve_recent_page(page, marker):
     if not found:
         raise MarkerNotFound("Exact marker absent from verified recent conversations")
     chat_url, role = next(iter(found.items()))
+    _lookup_event("recent_match", "verified", source=found_source[chat_url], count=1)
     return {"chat_url": chat_url, "evidence_verified": True,
             "verification": role, "matches": 1}
 
@@ -626,8 +693,9 @@ async def resolve_in_recent(browser, marker, observe=None, new_page=None):
         if observe:
             page.on("response", observe)
         async with asyncio.timeout(85):
-            await page.goto("https://chatgpt.com/", wait_until="domcontentloaded",
-                            timeout=15000)
+            await _timed_await("recent_navigation", page.goto(
+                "https://chatgpt.com/", wait_until="domcontentloaded", timeout=15000
+            ))
             if urlsplit(page.url).netloc != "chatgpt.com":
                 raise PermissionError("ChatGPT browser not authenticated")
             return await resolve_recent_page(page, marker)
@@ -635,13 +703,33 @@ async def resolve_in_recent(browser, marker, observe=None, new_page=None):
         await page.close()
 
 async def resolve_automatically(browser, marker, observe=None, new_page=None):
-    """Prefer sidebar to full-text index, retaining one bounded HTTP deadline."""
+    """Search index first; bounded verified recent-chat fallback."""
     import asyncio
+
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
     validate_marker(marker)
-    async with asyncio.timeout(170):
-        try:
-            return await resolve_in_recent(browser, marker, observe, new_page)
-        except (MarkerNotFound, RecentScanUnavailable, TimeoutError):
-            # A failed recent-chat scan is not evidence the chat is missing;
-            # search is the bounded secondary discovery strategy.
-            return await resolve_in_browser(browser, marker, observe, new_page)
+    token = _TRACE_ID.set(secrets.token_hex(4))
+    try:
+        with _timed_phase("total"):
+            async with asyncio.timeout(170):
+                try:
+                    with _timed_phase("search_total"):
+                        result = await resolve_in_browser(browser, marker, observe, new_page)
+                except MarkerNotFound:
+                    _lookup_event("fallback", "not_indexed", source="search_index")
+                except (TimeoutError, PlaywrightTimeoutError):
+                    _lookup_event("fallback", "ui_timeout", source="search_index")
+                except RuntimeError as error:
+                    if type(error) is not RuntimeError or str(error) not in _SEARCH_UI_RECOVERABLE:
+                        raise
+                    _lookup_event("fallback", "ui_unavailable", source="search_index")
+                else:
+                    _lookup_event("result", "verified", source="search_index", count=1)
+                    return result
+                with _timed_phase("recent_total"):
+                    result = await resolve_in_recent(browser, marker, observe, new_page)
+                _lookup_event("result", "verified", source="recent", count=1)
+                return result
+    finally:
+        _TRACE_ID.reset(token)

@@ -1,3 +1,6 @@
+## 0.2.0b22 — 2026-11-08
+- Mac Server diagnostic candidate: indexed ChatGPT search first, verified recent chats as fallback; per-phase timing, source attribution and private-data-safe correlation logs. No jkmac deployment.
+
 ## 0.2.0b21 — 2026-11-07
 
 - Use a full WC/legacy marker query before reading ChatGPT Search result links; never treat unqueried recent suggestions as matches.

@@ -222,37 +222,43 @@ async def test_recent_discovery_uses_one_navigation_for_all_chats():
 
 
 @pytest.mark.asyncio
-async def test_automatic_discovery_prefers_recent_without_index(monkeypatch):
+async def test_automatic_discovery_prefers_search_before_recent(monkeypatch):
     from chatbridge import marker_lookup
     calls = []
+
     async def recent(*args, **kwargs):
         calls.append('recent')
-        return {'chat_url': CHAT_URL, 'verification': 'assistant_message',
-                'evidence_verified': True, 'matches': 1}
+        raise AssertionError('Recent scan must not precede successful Search')
+
     async def index(*args, **kwargs):
         calls.append('index')
-        raise AssertionError('Index must not be used if recent chat verifies marker')
+        return {'chat_url': CHAT_URL, 'verification': 'assistant_message',
+                'evidence_verified': True, 'matches': 1}
+
     monkeypatch.setattr(marker_lookup, 'resolve_in_recent', recent)
     monkeypatch.setattr(marker_lookup, 'resolve_in_browser', index)
     assert (await marker_lookup.resolve_automatically(object(), MARKER))['chat_url'] == CHAT_URL
-    assert calls == ['recent']
+    assert calls == ['index']
 
 
 @pytest.mark.asyncio
-async def test_automatic_discovery_falls_back_to_index_only_on_recent_not_found(monkeypatch):
+async def test_automatic_discovery_recent_fallback_only_after_search_miss(monkeypatch):
     from chatbridge import marker_lookup
     calls = []
+
     async def recent(*args, **kwargs):
         calls.append('recent')
-        raise MarkerNotFound('No recent sidebar match')
-    async def index(*args, **kwargs):
-        calls.append('index')
         return {'chat_url': CHAT_URL, 'verification': 'assistant_message',
                 'evidence_verified': True, 'matches': 1}
+
+    async def index(*args, **kwargs):
+        calls.append('index')
+        raise MarkerNotFound('No indexed match')
+
     monkeypatch.setattr(marker_lookup, 'resolve_in_recent', recent)
     monkeypatch.setattr(marker_lookup, 'resolve_in_browser', index)
     assert (await marker_lookup.resolve_automatically(object(), MARKER))['chat_url'] == CHAT_URL
-    assert calls == ['recent', 'index']
+    assert calls == ['index', 'recent']
 
 
 @pytest.mark.asyncio
