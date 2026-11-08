@@ -266,6 +266,25 @@ async def activate_chat_search(page):
     raise RuntimeError("ChatGPT search dialog input unavailable")
 
 
+async def verify_index_candidate_history(page, target, marker):
+    """Verify indexed candidate using only the already-authenticated Search page.
+
+    Search URLs are untrusted hints. The backend must independently confirm
+    the conversation UUID, full marker, and actual author role.
+    """
+    validate_marker(marker)
+    target = canonical_candidate(target)
+    if not target:
+        raise ValueError("Not a canonical ChatGPT search candidate")
+    from .browser_transport import BACKEND_JS
+
+    expected_cid = target.rsplit("/c/", 1)[-1]
+    history = await _timed_await(
+        "ui_candidate_history", page.evaluate(BACKEND_JS, expected_cid)
+    )
+    return verified_role_from_history(history, expected_cid, marker)
+
+
 async def resolve_in_browser(browser, marker, observe=None, new_page=None):
     """Search the built-in UI, verify exact USER message in each candidate.
 
@@ -336,66 +355,20 @@ async def resolve_in_browser(browser, marker, observe=None, new_page=None):
         if not candidates:
             raise MarkerNotFound("No ChatGPT search results for this marker")
         for target in candidates:
-            # The URL in search results is only a candidate, never proof.
-            probe = await new_page(browser) if new_page else await context.new_page()
             candidate_started = time.monotonic()
             try:
-                if observe:
-                    probe.on("response", observe)
-                await _timed_await("ui_candidate_navigation", probe.goto(
-                    target, wait_until="domcontentloaded", timeout=30000
-                ))
-                if canonical_candidate(probe.url) != target:
-                    continue
-                user = probe.locator(
-                    '[data-user-message-bubble="true"], [data-message-author-role="user"]'
-                )
-                assistant = probe.locator(
-                    '[data-message-author-role="assistant"], [data-testid="conversation-turn-assistant"]'
-                )
-                for _ in range(12):
-                    if await user.count() or await assistant.count():
-                        break
-                    await probe.wait_for_timeout(700)
-                role = None
-                if any(message_contains_marker(t, marker) for t in await assistant.all_inner_texts()):
-                    role = "assistant_message"
-                elif any(message_contains_marker(t, marker) for t in await user.all_inner_texts()):
-                    role = "user_message"
-                if not role:
-                    # ChatGPT may virtualize an assistant turn or render
-                    # structured rich content outside the usual message node.
-                    # Read the provider's CURRENT selected conversation chain,
-                    # require an exact conversation ID, and check explicit role.
-                    from .browser_transport import BACKEND_JS
-                    expected_cid = target.rsplit("/c/", 1)[-1]
-                    history = await _timed_await(
-                        "ui_candidate_history", probe.evaluate(BACKEND_JS, expected_cid)
-                    )
-                    if history.get("error") == "history_http_429":
-                        from .rate_limit import ProviderRateLimitError
-                        raise ProviderRateLimitError("ChatGPT history search rate limited")
-                    if "error" in history:
-                        raise RuntimeError("Chat history verification unavailable")
-                    if history.get("conversation_id") != expected_cid:
-                        raise RuntimeError("Provider conversation identity mismatch")
-                    roles = {
-                        node.get("role") for node in history.get("chain", [])
-                        if node.get("role") in ("user", "assistant") and message_contains_marker(
-                            node.get("content", ""), marker
-                        )
-                    }
-                    if "assistant" in roles:
-                        role = "assistant_message"
-                    elif "user" in roles:
-                        role = "user_message"
+                # No extra Chrome tab, candidate navigation or expensive DOM
+                # all_inner_texts() scan. The same provider history API is
+                # already used for strictly verified recent-chat fallback.
+                role = await verify_index_candidate_history(page, target, marker)
                 if role:
                     found[target] = role
             finally:
-                await probe.close()
-                _lookup_event("ui_candidate_verify",
-                              "verified" if target in found else "no_match",
-                              started=candidate_started)
+                _lookup_event(
+                    "ui_candidate_verify",
+                    "verified" if target in found else "no_match",
+                    started=candidate_started, source="search_index",
+                )
         unique = sorted(found)
         if len(unique) > 1:
             raise AmbiguousMarker("Marker appears in more than one verified conversation")

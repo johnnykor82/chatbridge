@@ -86,6 +86,16 @@ class SearchPage:
     async def goto(self, url, **_):
         self.url = url
 
+    async def evaluate(self, code, *args):
+        if args:
+            cid = args[0]
+            return {"provider_conversation_id": cid, "conversation_id": cid,
+                    "chain": [{"role": "assistant",
+                               "content": "Existing assistant posted " + MARKER}]}
+        return {"ready": "complete", "sidebar_links": 18,
+                "search_buttons": 2, "visible_search_buttons": 1,
+                "dialogs": 1, "visible_comboboxes": 1, "dialog_links": 1}
+
     def locator(self, selector):
         assert selector == '[role="dialog"]'
         return Dialog(self)

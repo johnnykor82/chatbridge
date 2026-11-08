@@ -1,3 +1,6 @@
+## v0.2.0-beta.23 — Local verification-performance candidate (2026-11-08)
+- Source-verified Search-first index candidates are checked against the existing provider conversation chain on the same authenticated Search page; no extra tab or DOM transcript scan. Detailed timing and fail-closed ambiguity retained. Not publicly released or installed on jkmac.
+
 ## v0.2.0-beta.22 — Local diagnostic candidate (2026-11-08)
 Search-first marker discovery. Timed UI navigation/hydration/search/index wait/verification and fallback recent histories. Result source is recorded without marker or chat content. Candidate is not yet an official public release.
 

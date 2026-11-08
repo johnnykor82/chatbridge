@@ -1,3 +1,6 @@
+## 0.2.0b23 — 2026-11-08
+- Optimize strict indexed search verification using the existing authenticated history reader on the same Search page. No per-candidate tabs or slow DOM text scans. Retains provider-ID, exact marker, role, duplicate, authorization and rate-limit checks. Mac Server local diagnostic candidate only.
+
 ## 0.2.0b22 — 2026-11-08
 - Mac Server diagnostic candidate: indexed ChatGPT search first, verified recent chats as fallback; per-phase timing, source attribution and private-data-safe correlation logs. No jkmac deployment.
 

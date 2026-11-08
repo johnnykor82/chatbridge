@@ -47,3 +47,15 @@ reported (including a failed lookup). A verified match is tagged
 source=search_index or source=recent, and recent_match distinguishes
 recent_sidebar/recent_provider. No marker, URL, conversation ID, message text,
 headers, HTML, or raw exception string is logged.
+
+## BF30 P06a: verification path optimization
+
+In local beta23, indexed Search results are confirmed by the existing
+authenticated provider chain on the original Search page. The previous
+`ui_candidate_navigation` event (new tab) is therefore absent and there is
+no full rendered-message DOM scan. Per-candidate `ui_candidate_history`
+and `ui_candidate_verify` remain, with source=search_index. Verification
+requires the exact provider conversation ID and the full marker in an
+explicit user or assistant role; all candidates are checked for duplicates.
+Unknown histories, permission errors or rate limits fail closed. There is
+no concurrent provider-history burst and no new backend endpoint.
