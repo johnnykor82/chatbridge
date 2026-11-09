@@ -570,14 +570,16 @@ class GatewayEngine:
         """Paced provider-history GET of only actionable unknown receipts."""
         if self.provider_status()["provider_rate_limited"]:
             return
+        # Unconfirmed ordinary turns can also lose the provider user ID.
+        # They remain UNKNOWN until a separately verified assistant end_turn;
+        # only Watcher notifications may finish on a user receipt alone.
         candidates = [
             row for row in self.store.unresolved()
-            if row.get("conversation_id") and (
-                row.get("user_message_id") or _watcher_receipt_only(row)
-            )
+            if row.get("conversation_id")
         ]
         candidates.sort(key=lambda row: (
             self._recovery_last_check.get(row["request_id"], 0),
+            0 if _watcher_receipt_only(row) else 1,
             row["created_at"],
         ))
         for index, row in enumerate(candidates[:2]):

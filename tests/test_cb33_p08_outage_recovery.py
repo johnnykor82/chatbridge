@@ -252,3 +252,42 @@ async def test_existing_http_reconcile_route_recovers_unknown_receipt_without_se
         await client.close()
         await eng.stop()
         store.close()
+
+
+@pytest.mark.asyncio
+async def test_periodic_reconciles_ordinary_lost_id_without_send(tmp_path):
+    store,sid,rid=prepared(tmp_path,prompt="Unique ordinary user request",key="ordinary-auto")
+    tr=History([user("Unique ordinary user request")])
+    eng=GatewayEngine(store,tr)
+    try:
+        await eng.reconcile_unknown()
+        assert tr.reads==1 and tr.calls==[]
+        row=store.get_request(rid)
+        assert row["user_message_id"]=="provider-user-1"
+        assert row["status"]=="unknown"
+    finally:store.close()
+
+
+@pytest.mark.asyncio
+async def test_periodic_prioritizes_untried_watcher_without_starving_others(tmp_path,monkeypatch):
+    import asyncio
+    store=Store(tmp_path/"state.db")
+    sid=store.create_session(conversation_id=CID)["session_id"]
+    first,_=store.enqueue(session_id=sid,prompt="older ordinary",client_request_id="older-auto")
+    store.set_status(first["request_id"],"unknown")
+    second,_=store.enqueue(session_id=sid,prompt=NOTICE,client_request_id=KEY)
+    store.set_status(second["request_id"],"unknown")
+    engine=GatewayEngine(store,History([]))
+    seen=[]
+    async def read_only_probe(rid):
+        seen.append(rid)
+        return False
+    async def zero_delay(_):
+        return None
+    monkeypatch.setattr(engine,"reconcile_request",read_only_probe)
+    monkeypatch.setattr(asyncio,"sleep",zero_delay)
+    try:
+        await engine.reconcile_unknown()
+        assert seen==[second["request_id"],first["request_id"]]
+        assert engine.transport.calls==[]
+    finally:store.close()
