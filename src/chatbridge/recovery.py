@@ -29,7 +29,7 @@ def recovery_hints(row: dict, rate_limit: dict, *, now: float | None = None) -> 
         return {
             "retry_after": retry_after,
             "unknown_reason": reason,
-            "reconcile_after": earliest if row.get("user_message_id") and row.get("conversation_id") else None,
+            "reconcile_after": earliest if row.get("conversation_id") else None,
         }
     return {
         "retry_after": retry_after if status == "queued" else 0,

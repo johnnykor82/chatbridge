@@ -290,18 +290,28 @@ complete chronological integrity.
 ## 7. Recover an uncertain request
 
 After a process interruption, in-flight requests may be marked
-`unknown`. If the gateway has a verified user message ID, it may locate
-the final assistant message in ChatGPT's history without sending anything
-again.
+unknown. Recovery reads authenticated provider history for the original
+persisted physical conversation: it NEVER resends the original prompt.
+When the provider user-message ID was lost after Send, only one unique
+exact full-text user message on a complete selected branch with compatible
+source time and parent may confirm receipt. Ambiguous or altered history
+fails closed. Already imported messages are transactionally linked.
+Watcher notices can be delivered by a verified provider user receipt even
+without an assistant answer; ordinary requests require a verified final
+assistant turn before completion.
 
 ```sh
 curl -sS -X POST \
   "$CHATBRIDGE_URL/v1/requests/$REQUEST_ID/reconcile"
 ```
 
-This returns `request_id`, `reconciled` (boolean), and `status`.
-A response with `reconciled: false` is not proof that the message was
-never sent. Inspect the ChatGPT conversation before submitting again.
+The response contains request_id, reconciled and status. A successful
+reconciliation of an ordinary request may have recovered its user receipt
+while assistant end_turn is still unknown; inspect status separately.
+A daemon monitor makes paced GET-only recovery attempts after outages,
+respecting HTTP 429 cooldown and never resending unknown prompts.
+A false reconciliation result is NOT proof that nothing was sent.
+Never blindly submit the same uncertain message again.
 
 ## 8. OpenAI Chat Completions compatibility
 

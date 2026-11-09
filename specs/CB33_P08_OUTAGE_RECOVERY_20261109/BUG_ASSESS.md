@@ -1,0 +1,2 @@
+# CB33 P08 Bug Assess — 2026-11-09
+Root cause is recovery coverage gap: missing user-message ID after Send makes the existing unknown reconciler inapplicable; request stays unknown and blocks later Watcher notification. Need authenticated provider complete-branch unique exact original text proof and atomic binding, not simply retry the Send button. Current provider cooldown is an independent operational blocker and must be respected.

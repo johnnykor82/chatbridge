@@ -896,6 +896,96 @@ class Store:
             )
         ]
 
+    def bind_verified_unknown_user_receipt(
+        self, rid: str, sid: str, cid: str, message_id: str,
+        parent_message_id: str | None, prompt: str, created_at: float,
+        *, receipt_only: bool = False,
+    ) -> bool:
+        """CAS bind exact provider user receipt without another Send.
+
+        The caller MUST independently authenticate provider history and check
+        exact full payload, chat, identity, timestamp and uniqueness. Never
+        infer a receipt from a local unknown request or a text substring.
+        """
+        if (not isinstance(message_id, str) or not message_id
+                or not isinstance(prompt, str)):
+            return False
+        now = time.time()
+        with self.db:
+            row = self.db.execute(
+                "SELECT * FROM requests WHERE request_id=?", (rid,)
+            ).fetchone()
+            if (not row or row["status"] != "unknown"
+                    or row["session_id"] != sid
+                    or row["conversation_id"] != cid
+                    or row["user_message_id"] is not None
+                    or row["prompt"] != prompt):
+                return False
+            if (row["parent_message_id"] is not None
+                    and row["parent_message_id"] != parent_message_id):
+                return False
+            if self.db.execute(
+                "SELECT 1 FROM requests WHERE user_message_id=? AND request_id<>?",
+                (message_id, rid),
+            ).fetchone():
+                return False
+            existing = self.db.execute(
+                "SELECT * FROM messages WHERE session_id=? AND message_id=?",
+                (sid, message_id),
+            ).fetchone()
+            if existing and (
+                existing["role"] != "user" or existing["content"] != prompt
+                or existing["request_id"] not in (None, rid)
+                or (existing["parent_message_id"] is not None
+                    and existing["parent_message_id"] != parent_message_id)
+            ):
+                return False
+            if self.db.execute(
+                "SELECT 1 FROM messages WHERE message_id=? AND session_id<>?",
+                (message_id, sid),
+            ).fetchone():
+                return False
+            status = "completed" if receipt_only else "unknown"
+            changed = self.db.execute(
+                "UPDATE requests SET user_message_id=?,parent_message_id=?,"
+                "status=?,updated_at=? WHERE request_id=? AND session_id=? "
+                "AND conversation_id=? AND status='unknown' "
+                "AND user_message_id IS NULL",
+                (message_id, parent_message_id, status, now, rid, sid, cid),
+            )
+            if changed.rowcount != 1:
+                return False
+            if existing:
+                self.db.execute(
+                    "UPDATE messages SET request_id=?,"
+                    "parent_message_id=COALESCE(parent_message_id,?) "
+                    "WHERE session_id=? AND message_id=? "
+                    "AND (request_id IS NULL OR request_id=?)",
+                    (rid, parent_message_id, sid, message_id, rid),
+                )
+            else:
+                self.db.execute(
+                    "INSERT INTO messages(session_id,message_id,request_id,"
+                    "role,content,parent_message_id,created_at) "
+                    "VALUES(?,?,?,?,?,?,?)",
+                    (sid, message_id, rid, "user", prompt,
+                     parent_message_id, created_at),
+                )
+            if receipt_only:
+                payload = {
+                    "request_id": rid, "session_id": sid,
+                    "conversation_id": cid, "type": "completed",
+                    "answer": "", "recovered": True,
+                    "receipt_only": True, "user_message_id": message_id,
+                }
+                self.db.execute(
+                    "INSERT INTO events(session_id,request_id,kind,payload,"
+                    "created_at) VALUES(?,?,?,?,?)",
+                    (sid, rid, "completed",
+                     json.dumps(payload, ensure_ascii=False), now),
+                )
+        return True
+
     def complete_recovered_request(
         self, rid: str, sid: str, conversation_id: str, message_id: str,
         parent_message_id: str | None, answer: str, refs: list[dict],
@@ -903,6 +993,25 @@ class Store:
         """Atomic unknown->completed CAS, assets and SSE event (no resend)."""
         now = time.time()
         with self.db:
+            # A history sync may have inserted the provider's assistant
+            # message without a local request ID. Bind it only if content,
+            # role and parent are exactly the authenticated provider result.
+            existing = self.db.execute(
+                "SELECT * FROM messages WHERE session_id=? AND message_id=?",
+                (sid, message_id),
+            ).fetchone()
+            if existing and (
+                existing["role"] != "assistant" or existing["content"] != answer
+                or existing["request_id"] not in (None, rid)
+                or (existing["parent_message_id"] is not None
+                    and existing["parent_message_id"] != parent_message_id)
+            ):
+                return False
+            if self.db.execute(
+                "SELECT 1 FROM messages WHERE message_id=? AND session_id<>?",
+                (message_id, sid),
+            ).fetchone():
+                return False
             updated = self.db.execute(
                 "UPDATE requests SET status='completed',answer=?,assistant_message_id=?,"
                 "updated_at=? WHERE request_id=? AND session_id=? AND conversation_id=? "
@@ -911,11 +1020,20 @@ class Store:
             )
             if updated.rowcount != 1:
                 return False
-            self.db.execute(
-                "INSERT OR IGNORE INTO messages(session_id,message_id,request_id,role,"
-                "content,parent_message_id,created_at) VALUES(?,?,?,?,?,?,?)",
-                (sid, message_id, rid, "assistant", answer, parent_message_id, now),
-            )
+            if existing:
+                self.db.execute(
+                    "UPDATE messages SET request_id=?,"
+                    "parent_message_id=COALESCE(parent_message_id,?)"
+                    " WHERE session_id=? AND message_id=?"
+                    " AND (request_id IS NULL OR request_id=?)",
+                    (rid, parent_message_id, sid, message_id, rid),
+                )
+            else:
+                self.db.execute(
+                    "INSERT INTO messages(session_id,message_id,request_id,role,"
+                    "content,parent_message_id,created_at) VALUES(?,?,?,?,?,?,?)",
+                    (sid, message_id, rid, "assistant", answer, parent_message_id, now),
+                )
             for ref in refs:
                 key = ref.get("asset_pointer") or ref.get("url") or ref.get("id")
                 if not key or not isinstance(key, str):

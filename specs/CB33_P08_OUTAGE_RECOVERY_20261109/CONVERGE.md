@@ -1,0 +1,6 @@
+# CB33 P08 Converge — OPEN
+Do not claim success until provider proof, old work preserved, B/A ACK, full tests, rollout and final BF33 pause. On 429 or absent proof, remain paused/uncertain and explicitly report blocker.
+P03 partial: exact missing-ID provider receipt, CAS and no duplicate Send verified 11 offline tests; continuous recovery and complete user-visible B proof remain unverified.
+P03/P04 code-level partial converge: no new Send or arbitrary text cap, local exact unique provider receipt and independent Watcher delivery state proof GREEN. Full suites, actual provider-proof of B, ACK and deployment OPEN.
+P03 source-level pass: 290 ChatBridge tests/4 subtests; precise full receipt no repeat Send and atomic user/assistant local binding. Cross-service production evidence after HTTP 429 and final B/A ACK remain OPEN.
+P05 offline source Converge 2026-11-10: entire Bridge 290+4 and Watcher 914+1175 (1 skip) GREEN, strict audit EXIT0, new file included in installer, Watcher manifest 280 tracked entries; no local code size ceilings or retry-on-unknown introduced. P06 production rollout, remote proof and B/A ACK are NOT verified because provider HTTP429 cooldown active. Do not mark overall project done.

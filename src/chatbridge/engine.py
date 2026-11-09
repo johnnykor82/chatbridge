@@ -67,6 +67,8 @@ class GatewayEngine:
         self.max_seen = 0
         self._stopping = False
         self._reconcile_task: asyncio.Task | None = None
+        self._recovery_monitor_task: asyncio.Task | None = None
+        self._recovery_last_check: dict[str, float] = {}
         self._rate_limit_gate = asyncio.Lock()
         self._next_probe_at = 0.0
         if hasattr(self.transport, "set_rate_limit_handler"):
@@ -120,6 +122,11 @@ class GatewayEngine:
             self._schedule(row["request_id"], row["session_id"])
         if self.store.unresolved():
             self._reconcile_task = asyncio.create_task(self.reconcile_unknown())
+        # The daemon may survive a network outage without restarting. Poll
+        # only uncertain durable records; provider reads are rate-limited.
+        self._recovery_monitor_task = asyncio.create_task(
+            self._recovery_monitor(), name="chatbridge:outage-recovery"
+        )
 
     def enqueue(
         self,
@@ -471,16 +478,17 @@ class GatewayEngine:
         return count
 
     async def reconcile_request(self, rid: str) -> bool:
+        """Provider GET-only unknown recovery. Never retry an uncertain Send."""
         if self.provider_status()["provider_rate_limited"]:
             return False
         row = self.store.get_request(rid)
-        if not row or row["status"] != "unknown" or not row["user_message_id"]:
+        if not row or row["status"] != "unknown":
             return False
         session = self.store.get_session(row["session_id"])
         if not session:
             return False
-        # Session may rotate: only the persisted physical request/chat binding
-        # can establish ownership. Never fall back to the current session CID.
+        # The queued request's persisted PHYSICAL conversation is binding.
+        # Never substitute the session's possibly rotated current chat.
         conversation_id = row.get("conversation_id")
         if not conversation_id:
             return False
@@ -492,56 +500,121 @@ class GatewayEngine:
             if history.get("chain_complete") is False:
                 return False
             from .browser_transport import _match_turn, _turn_image_refs
+            from .receipt_recovery import exact_user_receipt
 
             chain = history.get("chain", [])
+            bound_new = False
+            if not row.get("user_message_id"):
+                # The provider's selected branch must be provably complete,
+                # especially before recovering a missing Send receipt.
+                if history.get("chain_complete") is not True:
+                    return False
+                # Text alone cannot confirm an attachment-bearing request.
+                if self.store.list_media(rid) or self.store.list_image_refs(rid):
+                    return False
+                receipt = exact_user_receipt(
+                    chain, prompt=row["prompt"],
+                    request_created_at=row["created_at"],
+                    expected_parent_id=row.get("parent_message_id"),
+                )
+                if receipt is None:
+                    return False
+                watcher_receipt = _watcher_receipt_only(row)
+                bound_new = self.store.bind_verified_unknown_user_receipt(
+                    rid, row["session_id"], conversation_id,
+                    receipt["id"], receipt.get("parent_id"),
+                    row["prompt"], float(receipt["create_time"]),
+                    receipt_only=watcher_receipt,
+                )
+                if not bound_new:
+                    return False
+                if watcher_receipt:
+                    # A Watcher notice is a user message delivered TO the
+                    # orchestrator. It does not require assistant completion.
+                    async with self._condition:
+                        self._condition.notify_all()
+                    return True
+                row = self.store.get_request(rid)
+
             final = _match_turn(
                 chain, row["user_message_id"], row["prompt"],
                 expected_parent_id=row.get("parent_message_id"),
             )
             if not final or not final.get("id"):
-                return False
+                # The user message is proven, but model end_turn is not.
+                # Keep the ordinary request unknown; never fabricate success.
+                return bound_new
             text = final.get("content", "")
             refs = _turn_image_refs(
                 chain, row["user_message_id"], row["prompt"],
                 expected_parent_id=row.get("parent_message_id"),
             )
-            # One durable CAS prevents double completion and duplicate SSE
-            # events across simultaneous read-only reconcilers or restarts.
             saved = self.store.complete_recovered_request(
-                rid, session["session_id"], conversation_id, final["id"],
+                rid, row["session_id"], conversation_id, final["id"],
                 final.get("parent_id"), text, refs,
             )
             if saved:
                 async with self._condition:
                     self._condition.notify_all()
-            return saved
+            return saved or bound_new
         except ProviderRateLimitError:
-            # A rate limit discovered during verification applies globally.
             if not self.provider_status()["provider_rate_limited"]:
                 self.note_provider_rate_limit(60, "reconciliation_rate_limited")
             return False
         except Exception as exc:
-            logger.warning("Reconciliation unavailable for %s: %s", rid, type(exc).__name__)
+            logger.warning("Reconciliation unavailable for %s: %s",
+                           rid, type(exc).__name__)
             return False
 
     async def reconcile_unknown(self) -> None:
-        """Recent verified turns only; avoid a startup burst of history reads."""
+        """Paced provider-history GET of only actionable unknown receipts."""
+        if self.provider_status()["provider_rate_limited"]:
+            return
         candidates = [
-            row
-            for row in self.store.unresolved()
-            if row.get("user_message_id") and time.time() - row["updated_at"] < 3600
+            row for row in self.store.unresolved()
+            if row.get("conversation_id") and (
+                row.get("user_message_id") or _watcher_receipt_only(row)
+            )
         ]
-        for i, row in enumerate(candidates[:10]):
-            if self._stopping:
-                break
-            if i:
+        candidates.sort(key=lambda row: (
+            self._recovery_last_check.get(row["request_id"], 0),
+            row["created_at"],
+        ))
+        for index, row in enumerate(candidates[:2]):
+            if self._stopping or self.provider_status()["provider_rate_limited"]:
+                return
+            if index:
                 await asyncio.sleep(12)
-            if self.provider_status()["provider_rate_limited"]:
-                break
+            if self._stopping or self.provider_status()["provider_rate_limited"]:
+                return
+            self._recovery_last_check[row["request_id"]] = time.monotonic()
             await self.reconcile_request(row["request_id"])
+
+    async def _recovery_monitor(self) -> None:
+        """Bounded wakeups after connectivity restoration; never POST Send."""
+        try:
+            # Initial startup reconciliation is separately scheduled. Delay
+            # the next cycle to avoid duplicate provider-history page reads.
+            while not self._stopping:
+                await asyncio.sleep(120)
+                if self._stopping or self.provider_status()["provider_rate_limited"]:
+                    continue
+                if (self.store.unresolved()
+                        and (self._reconcile_task is None
+                             or self._reconcile_task.done())):
+                    self._reconcile_task = asyncio.create_task(
+                        self.reconcile_unknown()
+                    )
+                    await self._reconcile_task
+        except asyncio.CancelledError:
+            raise
 
     async def stop(self):
         self._stopping = True
+        if self._recovery_monitor_task and not self._recovery_monitor_task.done():
+            self._recovery_monitor_task.cancel()
+            await asyncio.gather(self._recovery_monitor_task,
+                                 return_exceptions=True)
         if self._reconcile_task and not self._reconcile_task.done():
             self._reconcile_task.cancel()
             await asyncio.gather(self._reconcile_task, return_exceptions=True)

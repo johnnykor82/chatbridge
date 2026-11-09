@@ -1,0 +1,8 @@
+# CB33 P08 Outage Recovery SPEC v1.0 — approved 2026-11-09
+R1: Never resubmit a ChatBridge request after Send when outcome unknown.
+R2: For an unknown request missing user_message_id, only a complete authenticated provider branch in its persisted physical conversation may prove an EXACTLY ONE user message with identical full original prompt, valid ID, expected parent where known, and compatible send time. No substring, marker-only or cross-chat proof.
+R3: Bind exact proven provider user ID to original request and local message atomically; support sync-imported message with request_id=NULL, refuse collisions/duplicates and preserve idempotency.
+R4: If provider assistant finished, existing completion reconciler may recover it; if not, preserve response uncertainty and separate user-delivery proof.
+R5: Watcher may classify an exact original delivery as delivered only on verified session/request/client key/user ID/full payload, including an explicit scoped recovery while project paused without any new send.
+R6: Startup/after-outage recovery is rate-limited and incremental, stops on HTTP429. Explicit request recovery can handle older unknown attempts. No artificial input-text caps or chunking.
+R7: RED/GREEN lost-ID, ambiguous/wrong-role/route/timestamp, synced-import CAS, restart idempotency, 429, full suites, Converge/Git and owner-only rollbackable deployment. Then finish existing B/A delivery ACK while preserving old BF33 rows.

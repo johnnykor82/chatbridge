@@ -53,6 +53,7 @@ MANIFEST = (
     "src/chatbridge/project_evidence.py",
     "src/chatbridge/rate_limit.py",
     "src/chatbridge/recovery.py",
+    "src/chatbridge/receipt_recovery.py",
     "src/chatbridge/server.py",
     "src/chatbridge/store.py",
     "docs/INSTALL.md",
