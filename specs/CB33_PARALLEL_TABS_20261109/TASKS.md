@@ -11,3 +11,7 @@
 - [ ] P06R-03 BLOCKED: existing completed ACKed old browser tasks still watching and will be reprocessed on resume. Requires new owner-approved Watcher code safeguard, RED/GREEN regression, Converge, scoped Git commit/deploy before unpause.
 - [ ] P06R-04 then exactly two new live workers with independent in-flight overlap/confirmed immutable reports/ACK; stop on 429.
 - [ ] P06R-05 re-pause original project, compare old immutable rows to backup, final Converge/Git commit.
+- [x] P06R approved Watcher code guard commit768b67b deployed, 894 tests PASS; original BF33 project resumed/tested/re-paused, 7 historical row groups unchanged and no429.
+- [x] P06R actual two simultaneous ChatBridge streaming requests verified, B completed/delivered/ACK/closed.
+- [ ] P06R full 2/2 completion: A Supervisor false-negative because response truncated at 12000 chars; no report or ACK. Out of approved scope, requires distinct owner permission.
+- [ ] P06R delivery while unrelated executor running: global gateway_busy gate blocks B ready notification. Out of approved scope, requires distinct owner architecture decision.
