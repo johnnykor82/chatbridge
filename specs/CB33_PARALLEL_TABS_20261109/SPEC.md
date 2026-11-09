@@ -8,3 +8,5 @@ S6: Structured nonsecret diagnostics: per request/session targetId, allocation, 
 S7: Test RED->GREEN deterministic 2/3/5/10 tab ownership races, cancellation, mismatch/timeout, session isolation, first-ready independent completion, no global 10-slot throughput serialization, 429. Run relevant full offline tests.
 S8: Only after validated snapshot and Converge, stage owner 59496 update without changing unrelated 8788/ChatBridge profiles, medical, GitHub or Mac Control; 2-worker longer live Watcher test where possible, respect 429.
 S9: Documentation after each stage, final code-to-contract Converge and Git commit. Never claim 10 real simultaneous model requests on mock evidence alone.
+
+CB33 P07R addition approved 2026-11-09: ChatBridge MUST NOT reject a nonempty plain-text message based on any arbitrary character count below actual selected ChatGPT platform/model context. Full 130k/1M UTF-8 examples remain byte-equivalent strings; the provider or transport reports its own real limits. No chunking, summarization or silent clipping.

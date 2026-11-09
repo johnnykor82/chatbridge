@@ -206,8 +206,10 @@ def parse_message(data: dict) -> tuple[str, list[ImagePayload]]:
                 raise MediaError("Unsupported content part")
         images += extra
         content = "\n".join(texts)
-    if not isinstance(content, str) or len(content) > 100000:
-        raise MediaError("content must be text <= 100000 characters")
+    # Do not impose a smaller character cap than the selected ChatGPT model.
+    # Actual transport/model limits are enforced by the platform itself.
+    if not isinstance(content, str):
+        raise MediaError("content must be text")
     if not content.strip() and not images:
         raise MediaError("Message must contain text or images")
     if len(images) > MAX_ATTACHMENTS_PER_MESSAGE:

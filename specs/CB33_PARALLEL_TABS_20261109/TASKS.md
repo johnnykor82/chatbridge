@@ -15,3 +15,6 @@
 - [x] P06R actual two simultaneous ChatBridge streaming requests verified, B completed/delivered/ACK/closed.
 - [ ] P06R full 2/2 completion: A Supervisor false-negative because response truncated at 12000 chars; no report or ACK. Out of approved scope, requires distinct owner permission.
 - [ ] P06R delivery while unrelated executor running: global gateway_busy gate blocks B ready notification. Out of approved scope, requires distinct owner architecture decision.
+
+- [x] P07R remove arbitrary 100000-character plain-text parser cap, preserve 130000 and 1000000 UTF-8 whole, full 274-test/4-subtest suite GREEN
+- [ ] P07R source docs Converge/Git commit and owner-only gateway deployment/rollback verification
