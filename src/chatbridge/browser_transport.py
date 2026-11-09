@@ -15,6 +15,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import nullcontext
 from functools import wraps
+from weakref import WeakKeyDictionary
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
@@ -391,6 +392,10 @@ class BrowserTransport:
         self._browser = None
         self._connected_cdp_url = None
         self._connect_lock = asyncio.Lock()
+        # Protect only CDP Target.createTarget -> matching Playwright Page.
+        # Other sessions may navigate and generate in parallel.
+        self._tab_creation_lock = asyncio.Lock()
+        self._page_target_ids = WeakKeyDictionary()
         self._marker_search_lock = asyncio.Lock()
         self._delete_lock = asyncio.Lock()
         self._owned_pages = set()
@@ -458,29 +463,68 @@ class BrowserTransport:
         return self._browser
 
     async def _new_page(self, browser):
-        """Create a visible tab without activating the Chrome app on macOS.
+        """Create one background Chrome target and verify its exact Page.
 
-        Playwright context.new_page() issues Target.createTarget without
-        background/focus and can steal the operator's active window.
-        We deliberately do not fall back to that method in visible mode.
+        Multiple context.expect_page waiters can all capture the first page
+        event. Serialize just creation+identity correlation, never generation.
+        Any mismatch is fail-closed and closes ONLY our own CDP target.
         """
         context = browser.contexts[0]
         if not self.visible_background:
             return await context.new_page()
-        session = await browser.new_browser_cdp_session()
-        try:
-            async with context.expect_page(timeout=15000) as event:
-                await session.send(
-                    "Target.createTarget",
-                    {
-                        "url": "about:blank",
-                        "background": True,
-                        "focus": False,
-                    },
-                )
-            return await event.value
-        finally:
-            await session.detach()
+
+        async with self._tab_creation_lock:
+            session = await browser.new_browser_cdp_session()
+            target_id = None
+            try:
+                async with context.expect_page(timeout=15000) as event:
+                    # Shield the Chrome command so cancellation cannot hide a
+                    # successfully created target before it can be closed.
+                    create = asyncio.create_task(session.send(
+                        "Target.createTarget",
+                        {"url": "about:blank", "background": True, "focus": False},
+                    ))
+                    try:
+                        outcome = await asyncio.shield(create)
+                    except asyncio.CancelledError:
+                        try:
+                            late = await asyncio.wait_for(
+                                asyncio.shield(create), timeout=15)
+                            late_id = late.get("targetId")
+                            if isinstance(late_id, str) and late_id:
+                                await session.send(
+                                    "Target.closeTarget", {"targetId": late_id})
+                        except Exception:
+                            log.exception("cb33_tab_cancel_cleanup_failed")
+                        raise
+                    if not isinstance(outcome, dict):
+                        raise RuntimeError("Chrome target allocation returned no identity")
+                    target_id = outcome.get("targetId")
+                    if not isinstance(target_id, str) or not target_id:
+                        raise RuntimeError("Chrome target allocation returned no targetId")
+                page = await event.value
+                verifier = await context.new_cdp_session(page)
+                try:
+                    info = await verifier.send("Target.getTargetInfo")
+                    actual_id = (info.get("targetInfo") or {}).get("targetId")
+                finally:
+                    await verifier.detach()
+                if actual_id != target_id:
+                    raise RuntimeError("Chrome page targetId mismatch; send prohibited")
+                # Weak map keeps per-page correlation without retaining dead pages.
+                self._page_target_ids[page] = target_id
+                log.info("cb33_tab_allocated target_id=%s", target_id)
+                return page
+            except BaseException:
+                if target_id:
+                    try:
+                        await session.send("Target.closeTarget", {"targetId": target_id})
+                        log.warning("cb33_tab_aborted target_id=%s", target_id)
+                    except Exception:
+                        log.exception("cb33_tab_cleanup_failed target_id=%s", target_id)
+                raise
+            finally:
+                await session.detach()
 
     async def _configure_reasoning_effort(self, page, effort: str) -> None:
         """Verify current reasoning effort before opening the native model picker."""
@@ -751,6 +795,9 @@ class BrowserTransport:
             raise RuntimeError("No authenticated browser context")
         page = await self._new_page(browser)
         self._owned_pages.add(page)
+        target_id = self._page_target_ids.get(page)
+        log.info("cb33_request_tab_attached request_id=%s session_id=%s target_id=%s",
+                 request_id, session_id, target_id)
         submitted_attempted = False
         emitted = ""
         start = time.monotonic()
@@ -805,7 +852,11 @@ class BrowserTransport:
                     if conversation_id
                     else "https://chatgpt.com/"
                 )
+            log.info("cb33_navigation_started request_id=%s session_id=%s target_id=%s",
+                     request_id, session_id, target_id)
             await page.goto(target, wait_until="domcontentloaded", timeout=40000)
+            log.info("cb33_navigation_finished request_id=%s session_id=%s target_id=%s",
+                     request_id, session_id, target_id)
             if temporary:
                 temporary_toggle = page.get_by_role(
                     "button",
@@ -1124,7 +1175,10 @@ class BrowserTransport:
             raise
 
         finally:
+            log.info("cb33_tab_cleanup request_id=%s session_id=%s target_id=%s",
+                     request_id, session_id, target_id)
             self._owned_pages.discard(page)
+            self._page_target_ids.pop(page, None)
             if not page.is_closed():
                 await page.close()
 
