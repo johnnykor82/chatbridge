@@ -17,3 +17,8 @@
 - [x] R9-03 six focused tests and full Bridge 306 passed/4 subtests; Ruff/py_compile/Git diff/Converge PASS
 - [ ] R9-04 Git and safe owner-only rollout after provider429 clears, verified backup
 - [ ] R9-05 original B unique proof/ACK, A once/ACK, final BF33 pause and old hashes
+
+- [x] Original B provider receipt verified, ACK and goal closed with no duplicate Send
+- [x] Original A attempted once and BF33 immediately re-paused; 9/9 old history hashes unchanged
+- [ ] A exact user receipt/paused delivery recovery/ACK/goal approval blocked by HTTP429 and missing provider user ID; NEVER RESEND
+- [ ] Final real E2E Converge, remaining acceptance and final Git stage checkpoint
