@@ -22,3 +22,6 @@
 - [x] Original A attempted once and BF33 immediately re-paused; 9/9 old history hashes unchanged
 - [ ] A exact user receipt/paused delivery recovery/ACK/goal approval blocked by HTTP429 and missing provider user ID; NEVER RESEND
 - [ ] Final real E2E Converge, remaining acceptance and final Git stage checkpoint
+- [x] P08 continuation: source-verified original A GET-only reconcile once and authenticated selected-history sync once; no matching user receipt, no Send
+- [x] P08 post-sync SQLite integrity and 9/9 original history hash verification, BF33 paused
+- [ ] P08 pending: wait for HTTP429 false, unique original A user-message proof, exact paused recovery/ACK/goal approval; NEVER RESEND
