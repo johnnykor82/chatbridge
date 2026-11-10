@@ -25,3 +25,5 @@
 - [x] P08 continuation: source-verified original A GET-only reconcile once and authenticated selected-history sync once; no matching user receipt, no Send
 - [x] P08 post-sync SQLite integrity and 9/9 original history hash verification, BF33 paused
 - [ ] P08 pending: wait for HTTP429 false, unique original A user-message proof, exact paused recovery/ACK/goal approval; NEVER RESEND
+- [x] 2026-11-10 19:26 latest GET-only original A check, provider429=false, old 9/9 historical hashes/SQLite integrity verified
+- [ ] P08 E2E acceptance not met: original A provider receipt/ACK/goal closure remain blocked (no provable user-message ID); never resend uncertain A
