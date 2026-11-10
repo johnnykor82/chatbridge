@@ -11,3 +11,9 @@
 - [x] P08-R8 Bridge unique user/Store raw provider content CAS and Watcher strict local exact event receipt comparator, all unrelated bytes unchanged
 - [ ] P08-R8 GREEN full Bridge 300+4 and Watcher 916/1 skipped/1175 subtests, strict audit and source Converge PASS; Git commits and backup/release pending
 - [ ] P08-R8 prove original B user receipt/ACK and finish A delivery/ACK without any duplicate Send; nine original history hashes and final paused project
+
+- [x] R9-01 three RED failures demonstrated repeated/after-restart history GET
+- [x] R9-02 durable Store+Engine pre-GET claim, 15/30/60min backoff, six GREEN tests
+- [x] R9-03 six focused tests and full Bridge 306 passed/4 subtests; Ruff/py_compile/Git diff/Converge PASS
+- [ ] R9-04 Git and safe owner-only rollout after provider429 clears, verified backup
+- [ ] R9-05 original B unique proof/ACK, A once/ACK, final BF33 pause and old hashes

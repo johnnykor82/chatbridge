@@ -157,6 +157,12 @@ class Store:
             last_hit REAL NOT NULL DEFAULT 0, incidents INTEGER NOT NULL DEFAULT 0,
             reason TEXT NOT NULL DEFAULT '', updated_at REAL NOT NULL DEFAULT 0
           );
+          CREATE TABLE IF NOT EXISTS recovery_probes (
+            request_id TEXT PRIMARY KEY REFERENCES requests(request_id),
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_attempt_at REAL NOT NULL DEFAULT 0,
+            next_due_at REAL NOT NULL DEFAULT 0
+          );
         """)
         # Older deployed databases need a nondestructive schema upgrade.
         columns = {r[1] for r in self.db.execute("PRAGMA table_info(requests)")}
@@ -190,6 +196,57 @@ class Store:
     @staticmethod
     def _row(row) -> dict | None:
         return dict(row) if row else None
+
+    def get_recovery_probe(self, rid: str) -> dict | None:
+        row = self.db.execute(
+            "SELECT request_id,attempts,last_attempt_at,next_due_at "
+            "FROM recovery_probes WHERE request_id=?", (rid,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def recovery_probe_due(self, rid: str, now: float | None = None) -> bool:
+        at = time.time() if now is None else float(now)
+        row = self.db.execute(
+            "SELECT r.status,p.next_due_at FROM requests r "
+            "LEFT JOIN recovery_probes p ON p.request_id=r.request_id "
+            "WHERE r.request_id=?", (rid,),
+        ).fetchone()
+        return bool(row and row["status"] == "unknown"
+                    and (row["next_due_at"] is None or row["next_due_at"] <= at))
+
+    def reserve_recovery_probe(self, rid: str, now: float | None = None) -> bool:
+        """Reserve one due provider GET BEFORE network I/O, durable on crash.
+
+        The immediate transaction serializes even independent DB connections.
+        Backoff is solely for uncertain history reads, never model/context
+        sizes or fresh executor notifications.
+        """
+        at = time.time() if now is None else float(now)
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            row = self.db.execute(
+                "SELECT r.status,p.attempts,p.next_due_at FROM requests r "
+                "LEFT JOIN recovery_probes p ON p.request_id=r.request_id "
+                "WHERE r.request_id=?", (rid,),
+            ).fetchone()
+            if not row or row["status"] != "unknown" or (
+                    row["next_due_at"] is not None and row["next_due_at"] > at):
+                self.db.commit()
+                return False
+            attempts = int(row["attempts"] or 0) + 1
+            delay = min(900 * (2 ** min(attempts - 1, 2)), 3600)
+            self.db.execute(
+                "INSERT INTO recovery_probes(request_id,attempts,last_attempt_at,next_due_at) "
+                "VALUES(?,?,?,?) ON CONFLICT(request_id) DO UPDATE SET "
+                "attempts=excluded.attempts,last_attempt_at=excluded.last_attempt_at,"
+                "next_due_at=excluded.next_due_at",
+                (rid, attempts, at, at + delay),
+            )
+            self.db.commit()
+            return True
+        except BaseException:
+            self.db.rollback()
+            raise
 
     def rate_limit_status(self, now: float | None = None) -> dict:
         """A single authenticated browser/account shares a provider quota."""

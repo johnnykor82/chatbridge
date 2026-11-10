@@ -356,3 +356,92 @@ async def test_p08_rendered_and_plain_duplicate_is_ambiguous(tmp_path):
         assert not await eng.reconcile_request(rid)
         assert store.get_request(rid)["user_message_id"] is None
     finally:store.close()
+
+
+@pytest.mark.asyncio
+async def test_p08_r9_repeated_auto_sweeps_do_not_reprobe_unverified_outcome(tmp_path):
+    store,sid,rid=prepared(tmp_path)
+    provider=History([user("unrelated user message")])
+    engine=GatewayEngine(store,provider)
+    try:
+        await engine.reconcile_unknown()
+        assert provider.reads==1
+        await engine.reconcile_unknown()
+        assert provider.reads==1, "Failed automatic probe must persist next due"
+        assert store.get_request(rid)["status"]=="unknown"
+        assert provider.calls==[]
+    finally:store.close()
+
+
+@pytest.mark.asyncio
+async def test_p08_r9_backoff_survives_store_restart(tmp_path):
+    store,sid,rid=prepared(tmp_path)
+    tr=History([user("not this request")])
+    await GatewayEngine(store,tr).reconcile_unknown()
+    assert tr.reads==1
+    store.close()
+    reopened=Store(tmp_path/"state.db")
+    try:
+        await GatewayEngine(reopened,tr).reconcile_unknown()
+        assert tr.reads==1
+    finally:reopened.close()
+
+
+def test_p08_r9_pre_io_claim_is_atomic_and_exponential(tmp_path):
+    store,sid,rid=prepared(tmp_path)
+    try:
+        assert store.reserve_recovery_probe(rid,now=10000)
+        assert not store.reserve_recovery_probe(rid,now=10000)
+        record=store.get_recovery_probe(rid)
+        assert record["attempts"]==1
+        assert record["next_due_at"]==10900
+    finally:store.close()
+    reopened=Store(tmp_path/"state.db")
+    try:
+        assert not reopened.reserve_recovery_probe(rid,now=10001)
+        assert reopened.reserve_recovery_probe(rid,now=10900)
+        assert reopened.get_recovery_probe(rid)["next_due_at"]==12700
+        assert reopened.reserve_recovery_probe(rid,now=12700)
+        assert reopened.get_recovery_probe(rid)["next_due_at"]==16300
+        assert reopened.reserve_recovery_probe(rid,now=16300)
+        assert reopened.get_recovery_probe(rid)["next_due_at"]==19900
+    finally:reopened.close()
+
+
+def test_p08_r9_sqlite_second_connection_cannot_double_reserve(tmp_path):
+    first,sid,rid=prepared(tmp_path)
+    second=Store(tmp_path/"state.db")
+    try:
+        assert first.reserve_recovery_probe(rid,now=10000)
+        assert not second.reserve_recovery_probe(rid,now=10001)
+        assert second.get_recovery_probe(rid)["attempts"]==1
+    finally:
+        second.close()
+        first.close()
+
+
+@pytest.mark.asyncio
+async def test_p08_r9_cooldown_skips_reservation_and_provider_history(tmp_path):
+    store,sid,rid=prepared(tmp_path)
+    provider=History([user()])
+    engine=GatewayEngine(store,provider)
+    try:
+        engine.note_provider_rate_limit(900,"incident")
+        await engine.reconcile_unknown()
+        assert provider.reads==0
+        assert store.get_recovery_probe(rid) is None
+    finally:store.close()
+
+
+@pytest.mark.asyncio
+async def test_p08_r9_crash_after_reservation_never_immediately_retries(tmp_path):
+    store,sid,rid=prepared(tmp_path)
+    assert store.reserve_recovery_probe(rid)
+    store.close()
+    reopened=Store(tmp_path/"state.db")
+    provider=History([user()])
+    try:
+        await GatewayEngine(reopened,provider).reconcile_unknown()
+        assert provider.reads==0
+        assert reopened.get_request(rid)["status"]=="unknown"
+    finally:reopened.close()

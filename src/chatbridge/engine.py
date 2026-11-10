@@ -577,6 +577,7 @@ class GatewayEngine:
         candidates = [
             row for row in self.store.unresolved()
             if row.get("conversation_id")
+            and self.store.recovery_probe_due(row["request_id"])
         ]
         candidates.sort(key=lambda row: (
             self._recovery_last_check.get(row["request_id"], 0),
@@ -590,6 +591,10 @@ class GatewayEngine:
                 await asyncio.sleep(12)
             if self._stopping or self.provider_status()["provider_rate_limited"]:
                 return
+            # Reserve BEFORE touching the provider. An interrupted GET or
+            # daemon restart cannot immediately repeat the same probe.
+            if not self.store.reserve_recovery_probe(row["request_id"]):
+                continue
             self._recovery_last_check[row["request_id"]] = time.monotonic()
             await self.reconcile_request(row["request_id"])
 
