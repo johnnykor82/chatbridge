@@ -20,7 +20,8 @@ class SlowAnswer:
         self.sent+=1
         try:
             yield TransportEvent("submitted",conversation_id=conversation_id or CONV,
-                                 message_id="00000000-1111-4222-8333-444444444444")
+                                 message_id="00000000-1111-4222-8333-444444444444",
+                                 meta={"http_status":200,"observation_source":"page_network"})
             yield TransportEvent("thinking")
             await asyncio.sleep(0.7)
             yield TransportEvent("text_delta",content="actual assistant answer")

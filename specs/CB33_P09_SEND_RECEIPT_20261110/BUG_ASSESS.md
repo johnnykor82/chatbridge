@@ -1,0 +1,2 @@
+# CB33 P09 Bug Assess — 2026-11-10
+Confirmed premature local decision: Send attempted once, fixed 1.3-second DOM-only gate returned no request ID and forced unknown without observing provider network acknowledgement. Separately current interceptor extracts a browser-generated user ID before HTTP success; using it for receipt-only completion risks false delivery. Cannot infer whether original A actually reached provider. Fix requires durable pre-Send evidence and successful original turn HTTP response before completed, never a retry.

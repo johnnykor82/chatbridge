@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 import re
 import time
@@ -98,6 +99,31 @@ INTERCEPT_JS = r"""(() => {
    return response;
  };
 })()"""
+
+def _original_turn_post(method: str, url: str, body: object, prompt: str) -> dict | None:
+    """Identify only the original page turn POST containing the FULL prompt.
+
+    Playwright request metadata is local to the current isolated Chrome tab;
+    reading it never sends another request and no body enters logs. The user
+    message ID is client-generated and must be paired with an HTTP response.
+    """
+    if (method != "POST"
+            or not re.search(r"/backend-api/(?:f/)?conversation(?:\\?|$)", url)
+            or not isinstance(body, dict)):
+        return None
+    candidates = []
+    for message in body.get("messages", []):
+        if not isinstance(message, dict) or (message.get("author") or {}).get("role") != "user":
+            continue
+        parts = (message.get("content") or {}).get("parts") or []
+        if isinstance(parts, list):
+            text = "\n".join(part for part in parts if isinstance(part, str))
+            if text == prompt and isinstance(message.get("id"), str) and message["id"]:
+                candidates.append(message["id"])
+    if len(candidates) != 1:
+        return None
+    return {"user_id": candidates[0], "parent_id": body.get("parent_message_id")}
+
 
 BACKEND_JS = r"""async (cid) => {
  try {
@@ -260,7 +286,7 @@ DOM_JS = r"""() => {
  return {
    uiErrorCount:errors.length,
    assistantCount:headings.length,
-   text:content.slice(0,500000),
+   text:content,
    url:location.href, requestId:state.requestId, parentId:state.parentId,
    httpStatus:state.responseStatus,
    sseCompleted:state.sseCompleted,sseFinished:state.sseFinished,
@@ -817,6 +843,50 @@ class BrowserTransport:
         approval_key = None
         navigation_limit = {"retry_until": 0.0, "retry_after": 0.0}
 
+        # A second independent source of original-turn evidence. The injected
+        # fetch hook can miss a delayed/replaced frontend request; Playwright's
+        # page-scoped network events still identify the same exact POST.
+        original_turn = {"request": None, "user_id": None, "parent_id": None,
+                         "http_status": None, "failed": False,
+                         "conflicting": False}
+
+        def observe_original_turn_request(request):
+            try:
+                body = request.post_data_json
+                if isinstance(body, str):
+                    body = json.loads(body)
+                if not isinstance(body, dict):
+                    raw = request.post_data
+                    body = json.loads(raw) if isinstance(raw, str) else None
+                match = _original_turn_post(request.method, request.url, body, prompt)
+                if not match:
+                    return
+                if original_turn["request"] is not None:
+                    original_turn["conflicting"] = True
+                    return
+                original_turn.update({"request": request,
+                                      "user_id": match["user_id"],
+                                      "parent_id": match["parent_id"]})
+                log.info("cb33_original_turn_post_seen request_id=%s",
+                         request_id)
+            except (TypeError, ValueError, AttributeError):
+                return
+
+        def observe_original_turn_response(response):
+            try:
+                if original_turn["request"] is not None and response.request is original_turn["request"]:
+                    original_turn["http_status"] = response.status
+                    log.info("cb33_original_turn_http_status request_id=%s status=%s",
+                             request_id, response.status)
+            except (TypeError, AttributeError):
+                return
+
+        def observe_original_turn_failure(request):
+            if original_turn["request"] is request:
+                original_turn["failed"] = True
+                log.warning("cb33_original_turn_request_failed request_id=%s",
+                            request_id)
+
         def observe_conversation_throttle(response):
             # ChatGPT's UI loads existing chats with the plural /conversations/
             # route, separate from the singular /conversation/ history endpoint.
@@ -837,6 +907,9 @@ class BrowserTransport:
         try:
             page.on("response", self._observe_provider_response)
             page.on("response", observe_conversation_throttle)
+            page.on("request", observe_original_turn_request)
+            page.on("response", observe_original_turn_response)
+            page.on("requestfailed", observe_original_turn_failure)
             await page.add_init_script(INTERCEPT_JS)
             if temporary:
                 target = "https://chatgpt.com/?temporary-chat=true"
@@ -941,6 +1014,10 @@ class BrowserTransport:
             await self._fill_composer(page, editor, prompt)
             if self._rate_limit_checker() > 0:
                 raise ProviderRateLimitError("Shared provider cooldown before pressing Send")
+            # Persist original Send intent BEFORE the first and ONLY click.
+            # A crash in the tiny gap between journal and browser call must
+            # fail closed; it is not permission to replay the user message.
+            yield TransportEvent("send_attempted")
             if conversation_id:
                 submitted_attempted = True
                 button = page.get_by_role("button", name=re.compile(r"^(Send|Отправить)$", re.I))
@@ -951,16 +1028,11 @@ class BrowserTransport:
             else:
                 submitted_attempted = True
                 await editor.press("Enter")
-            # The first click/Enter may still be in flight without DOM or fetch
-            # acknowledgement. A second click is NOT proof of non-delivery and
-            # risks a duplicate model invocation: preserve unknown instead.
-            await asyncio.sleep(1.3)
-            initial_state = await page.evaluate(DOM_JS)
-            if not initial_state.get("requestId"):
-                raise SubmissionUncertainError(
-                    "No provider user-message ID after Send; never click Send again"
-                )
-            # We cannot certify submission from a click alone.
+            # No fixed post-click ID deadline. Both client ID and provider
+            # HTTP success may arrive asynchronously; observe local signals
+            # until original turn timeout or an explicit failure. Do not click
+            # again when either is absent.
+            # A generated client ID alone cannot certify provider receipt.
             first_submitted = False
             initial_conversation = conversation_id
             announced_conversation = conversation_id
@@ -975,7 +1047,35 @@ class BrowserTransport:
                 url = dom.get("url", "")
                 cid_match = re.search(r"/c/([0-9a-f-]{36})", url)
                 cid = cid_match.group(1) if cid_match else conversation_id
-                user_id = dom.get("requestId")
+                if original_turn["conflicting"]:
+                    raise SubmissionUncertainError(
+                        "Multiple source-bound turn requests observed after one Send"
+                    )
+                network_id = original_turn["user_id"]
+                dom_id = dom.get("requestId")
+                if network_id and dom_id and network_id != dom_id:
+                    raise SubmissionUncertainError(
+                        "Conflicting source-bound provider message identifiers"
+                    )
+                user_id = network_id or dom_id
+                # Once the original POST is observed, require its OWN response,
+                # not an unrelated later DOM status from the same Chrome tab.
+                http_status = (
+                    original_turn["http_status"] if network_id else dom.get("httpStatus")
+                )
+                parent_id = original_turn["parent_id"] or dom.get("parentId")
+                if original_turn["failed"] and http_status is None:
+                    raise SubmissionUncertainError(
+                        "Source-bound browser POST failed; provider outcome unknown"
+                    )
+                if http_status == 429:
+                    raise SubmissionUncertainError(
+                        "Provider HTTP 429 after Send; original prompt must not be resent"
+                    )
+                if isinstance(http_status, int) and not (200 <= http_status < 300):
+                    raise SubmissionUncertainError(
+                        "Provider rejected original Send; do not assume non-delivery"
+                    )
                 if (
                     submitted_attempted
                     and dom.get("uiErrorCount", 0) > baseline_ui_errors
@@ -985,14 +1085,22 @@ class BrowserTransport:
                         "ChatGPT displayed a network failure after Send; "
                         "the prompt must not be retransmitted automatically"
                     )
-                if not first_submitted and user_id:
+                if (not first_submitted and user_id
+                        and isinstance(http_status, int)
+                        and 200 <= http_status < 300):
                     if cid and not temporary:
                         announced_conversation = cid
                     yield TransportEvent(
                         "submitted",
                         conversation_id=cid,
                         message_id=user_id,
-                        parent_message_id=dom.get("parentId"),
+                        parent_message_id=parent_id,
+                        meta={
+                            "http_status": http_status,
+                            "observation_source": (
+                                "page_network" if network_id else "dom_interceptor"
+                            ),
+                        },
                     )
                     first_submitted = True
                     verification = VerificationSchedule(time.monotonic(), initial_probe_delay)
@@ -1166,6 +1274,15 @@ class BrowserTransport:
                 await asyncio.sleep(2.0 if quiet else 0.7)
             raise TimeoutError("No confirmed end_turn within configured hard timeout")
         except Exception as exc:
+            if submitted_attempted:
+                log.warning(
+                    "cb33_original_send_unconfirmed request_id=%s "
+                    "network_post_seen=%s network_http_status=%s "
+                    "network_failed=%s conflict=%s exception_type=%s",
+                    request_id, original_turn["request"] is not None,
+                    original_turn["http_status"], original_turn["failed"],
+                    original_turn["conflicting"], type(exc).__name__,
+                )
             if submitted_attempted and not isinstance(exc, SubmissionUncertainError):
                 raise SubmissionUncertainError(
                     "Turn send was attempted; cannot prove non-submission"

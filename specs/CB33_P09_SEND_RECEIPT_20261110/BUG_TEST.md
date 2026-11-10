@@ -1,0 +1,3 @@
+# CB33 P09 Bug Test — source verified / live pending
+Before: four initial RED failures; additional independent network callback and client-only Watcher false completion RED; two atomic HTTP journal RED.
+After: 10 focused P09, 30 browser lifecycle, entire 317+4 ChatBridge suite PASS; critical Ruff/compile/source inventory PASS. Verifies exact one Send via fake Playwright and failure/no-resend logic; 130000 original prompt whole-content test. Live original A historical truth remains unproven and is intentionally NOT retransmitted. Status partial pending owner-only rollout, new two-worker real E2E and external outage replay.

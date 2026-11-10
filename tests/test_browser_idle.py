@@ -489,7 +489,10 @@ async def test_closing_generate_after_first_event_closes_page_and_releases_lease
         async with aclosing(transport.generate(session_id="s", conversation_id=None,
                                                prompt="hi", request_id="r")) as stream:
             event = await anext(stream)
-            assert event.type == "submitted"
+            assert event.type == "send_attempted"
+            # The synchronous DB intent event is emitted BEFORE the click:
+            # closing this generator must never issue a browser Send.
+            editor.press.assert_not_awaited()
             assert supervisor._active_requests == 1
             assert page in transport._owned_pages
         page.close.assert_awaited_once()

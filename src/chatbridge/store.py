@@ -921,6 +921,54 @@ class Store:
                     (assistant_message_id, rid),
                 )
 
+    def record_http_accepted(
+        self, rid: str, sid: str, message_id: str, *,
+        parent_message_id: str | None, http_status: int,
+        observation_source: str,
+    ) -> bool:
+        """Atomically persist the original turn HTTP acceptance evidence.
+
+        Client-originated user ID plus provider 2xx is not historical proof
+        of message persistence, but permits exact GET-only recovery after
+        crashes without any second Send. Never persist prompt/headers/tokens
+        in this metadata-only event.
+        """
+        if (not isinstance(message_id, str) or not message_id
+                or not isinstance(http_status, int)
+                or not 200 <= http_status < 300
+                or observation_source not in {"page_network", "dom_interceptor"}):
+            return False
+        now = time.time()
+        with self.db:
+            row = self.db.execute(
+                "SELECT session_id,status,user_message_id FROM requests "
+                "WHERE request_id=?", (rid,),
+            ).fetchone()
+            if not row or row["session_id"] != sid or row["status"] != "submitting":
+                return False
+            if row["user_message_id"] is not None:
+                return False
+            update = self.db.execute(
+                "UPDATE requests SET user_message_id=?,parent_message_id=?,"
+                "updated_at=? WHERE request_id=? AND session_id=? "
+                "AND status='submitting' AND user_message_id IS NULL",
+                (message_id,parent_message_id,now,rid,sid),
+            )
+            if update.rowcount != 1:
+                return False
+            payload = {
+                "request_id":rid, "session_id":sid,
+                "type":"http_accepted",
+                "http_status":http_status,
+                "observation_source":observation_source,
+            }
+            self.db.execute(
+                "INSERT INTO events(session_id,request_id,kind,payload,created_at) "
+                "VALUES(?,?,?,?,?)",
+                (sid,rid,"http_accepted",json.dumps(payload),now),
+            )
+            return True
+
     def append_answer(self, rid: str, delta: str) -> None:
         with self.db:
             self.db.execute(

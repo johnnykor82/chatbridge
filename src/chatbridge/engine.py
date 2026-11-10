@@ -200,6 +200,7 @@ class GatewayEngine:
                 self.active += 1
                 self.max_seen = max(self.max_seen, self.active)
                 confirmed_send = False
+                attempted_send = False
                 try:
                     request = self.store.get_request(rid)
                     if not request or request["status"] != "queued":
@@ -247,7 +248,13 @@ class GatewayEngine:
                                     sid, ev.conversation_id, request_id=rid
                                 )
                                 session = self.store.get_session(sid)
-                            if ev.type == "conversation_bound":
+                            if ev.type == "send_attempted":
+                                # Intent is journaled before browser click.
+                                # On crash or HTTP429, NEVER requeue the same
+                                # prompt even if no provider ID was captured.
+                                attempted_send = True
+                                await self._emit(rid, sid, "send_attempted")
+                            elif ev.type == "conversation_bound":
                                 await self._emit(
                                     rid,
                                     sid,
@@ -256,7 +263,27 @@ class GatewayEngine:
                                 )
                             elif ev.type == "submitted":
                                 confirmed_send = True
-                                if ev.message_id:
+                                http_evidence = ev.meta or {}
+                                if "http_status" in http_evidence:
+                                    # BrowserTransport only emits submitted
+                                    # after source-bound original HTTP success.
+                                    # Journal user ID and HTTP ACK atomically,
+                                    # so a crash before completion can recover
+                                    # by later strict provider history GET.
+                                    if not self.store.record_http_accepted(
+                                        rid,sid,ev.message_id or "",
+                                        parent_message_id=ev.parent_message_id,
+                                        http_status=http_evidence["http_status"],
+                                        observation_source=http_evidence.get(
+                                            "observation_source", ""
+                                        ),
+                                    ):
+                                        raise SubmissionUncertainError(
+                                            "Original HTTP acceptance evidence conflicted"
+                                        )
+                                elif ev.message_id:
+                                    # Legacy mock/custom transport compatibility:
+                                    # no false claim of HTTP evidence.
                                     self.store.set_ids(
                                         rid, user_message_id=ev.message_id,
                                         parent_message_id=ev.parent_message_id,
@@ -272,6 +299,7 @@ class GatewayEngine:
                                 if (
                                     ev.message_id and ev.conversation_id
                                     and ev.conversation_id == session.get("conversation_id")
+                                    and "http_status" in http_evidence
                                     and _watcher_receipt_only(request)
                                 ):
                                     self.store.set_status(rid, "completed")
@@ -380,8 +408,8 @@ class GatewayEngine:
                 except ProviderRateLimitError:
                     if not self.provider_status()["provider_rate_limited"]:
                         self.note_provider_rate_limit(60.0, "provider_rate_limit_error")
-                    if confirmed_send:
-                        # Fail closed: after submission, any uncertain error
+                    if confirmed_send or attempted_send:
+                        # Fail closed: after possible submission, any uncertain error
                         # must never schedule a duplicate user message.
                         self.store.set_status(rid, "unknown", error="provider rate limited")
                         await self._emit(rid, sid, "error", status="unknown")
@@ -398,7 +426,8 @@ class GatewayEngine:
                     # Once submitted, never automatically retransmit after an uncertain failure.
                     status = (
                         "unknown"
-                        if (confirmed_send or isinstance(exc, SubmissionUncertainError))
+                        if (confirmed_send or attempted_send
+                            or isinstance(exc, SubmissionUncertainError))
                         else "failed"
                     )
                     self.store.set_status(
