@@ -6,3 +6,5 @@ R4: Watcher receipt-only completion needs both valid original user message ID AN
 R5: Persist metadata-only stages, not credentials/prompt bodies. Preserve GET-only durable R9 recovery backoff and provider429 stop.
 R6: RED/GREEN late ID/HTTP200, absent ID, post-Send 429, cancelled/restarted, one Send, large complete answer and unchanged provider text; full suites/Converge/Git, reversible owner-only release.
 R7: New two-worker test in isolated new project: simultaneous execution, out-of-order delivery/ACK, no unverified retries. Old BF33 unchanged. Pause on 429.
+
+P06A 2026-11-10: Network observer must ignore unrelated HTTP POST requests before reading/parsing body. Unrelated non-JSON telemetry POST cannot crash Playwright event dispatch, interfere with reasoning picker, or change Send state. Only original ChatGPT full-prompt turn request can contribute evidence. Malformed original POST must fail closed without leaking body or retrying. Never impose arbitrary content limits.

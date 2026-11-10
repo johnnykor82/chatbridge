@@ -1,2 +1,4 @@
 # CB33 P09 Bug Assess — 2026-11-10
 Confirmed premature local decision: Send attempted once, fixed 1.3-second DOM-only gate returned no request ID and forced unknown without observing provider network acknowledgement. Separately current interceptor extracts a browser-generated user ID before HTTP success; using it for receipt-only completion risks false delivery. Cannot infer whether original A actually reached provider. Fix requires durable pre-Send evidence and successful original turn HTTP response before completed, never a retry.
+
+P06A Assess: failure pre-Send with no attempt journal, no chat URL and no provider user ID. Browser navigated but unrelated nonJSON POST in page request event handler raised Playwright POST data parse error, poisoning reasoning picker call. Fix the network source filter instead of relaxing the picker; request can only be resubmitted after definite pre-Send failure is verified, never unknown.

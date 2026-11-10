@@ -18,6 +18,7 @@ from contextlib import nullcontext
 from functools import wraps
 from weakref import WeakKeyDictionary
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
@@ -851,6 +852,16 @@ class BrowserTransport:
                          "conflicting": False}
 
         def observe_original_turn_request(request):
+            # ChatGPT issues opaque non-JSON telemetry POSTs on this page.
+            # Playwright post_data_json raises Error on them, and a listener
+            # exception can poison unrelated Playwright calls before Send.
+            # Inspect bodies ONLY on the original ChatGPT turn endpoint.
+            if (request.method != "POST"
+                    or not re.match(
+                        r"^https://chatgpt[.]com/backend-api/(?:f/)?conversation(?:[?]|$)",
+                        request.url,
+                    )):
+                return
             try:
                 body = request.post_data_json
                 if isinstance(body, str):
@@ -869,7 +880,9 @@ class BrowserTransport:
                                       "parent_id": match["parent_id"]})
                 log.info("cb33_original_turn_post_seen request_id=%s",
                          request_id)
-            except (TypeError, ValueError, AttributeError):
+            except (PlaywrightError, TypeError, ValueError, AttributeError):
+                # The matching endpoint had an unreadable body. Keep the
+                # original send unverified; never infer delivery or retry.
                 return
 
         def observe_original_turn_response(response):
