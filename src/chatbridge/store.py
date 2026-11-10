@@ -900,6 +900,7 @@ class Store:
         self, rid: str, sid: str, cid: str, message_id: str,
         parent_message_id: str | None, prompt: str, created_at: float,
         *, receipt_only: bool = False,
+        provider_content: str | None = None,
     ) -> bool:
         """CAS bind exact provider user receipt without another Send.
 
@@ -909,6 +910,12 @@ class Store:
         """
         if (not isinstance(message_id, str) or not message_id
                 or not isinstance(prompt, str)):
+            return False
+        from .receipt_recovery import same_provider_self_link_rendering
+
+        if provider_content is None:
+            provider_content = prompt
+        if not same_provider_self_link_rendering(prompt, provider_content):
             return False
         now = time.time()
         with self.db:
@@ -934,7 +941,8 @@ class Store:
                 (sid, message_id),
             ).fetchone()
             if existing and (
-                existing["role"] != "user" or existing["content"] != prompt
+                existing["role"] != "user"
+                or existing["content"] != provider_content
                 or existing["request_id"] not in (None, rid)
                 or (existing["parent_message_id"] is not None
                     and existing["parent_message_id"] != parent_message_id)
@@ -968,7 +976,7 @@ class Store:
                     "INSERT INTO messages(session_id,message_id,request_id,"
                     "role,content,parent_message_id,created_at) "
                     "VALUES(?,?,?,?,?,?,?)",
-                    (sid, message_id, rid, "user", prompt,
+                    (sid, message_id, rid, "user", provider_content,
                      parent_message_id, created_at),
                 )
             if receipt_only:

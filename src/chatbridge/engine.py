@@ -525,6 +525,7 @@ class GatewayEngine:
                     receipt["id"], receipt.get("parent_id"),
                     row["prompt"], float(receipt["create_time"]),
                     receipt_only=watcher_receipt,
+                    provider_content=receipt["content"],
                 )
                 if not bound_new:
                     return False

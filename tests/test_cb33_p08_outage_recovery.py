@@ -291,3 +291,68 @@ async def test_periodic_prioritizes_untried_watcher_without_starving_others(tmp_
         assert seen==[second["request_id"],first["request_id"]]
         assert engine.transport.calls==[]
     finally:store.close()
+
+
+P08_URL=f"https://chatgpt.com/c/{CID}"
+P08_RAW=f"[MC-WATCH:{DID}]\nExecutor chat: {P08_URL}\nImmutable sha256 last marker"
+P08_RENDERED=P08_RAW.replace(P08_URL,f"[{P08_URL}]({P08_URL})")
+
+
+@pytest.mark.asyncio
+async def test_p08_rendered_self_link_recovers_lost_id_no_send(tmp_path):
+    store,sid,rid=prepared(tmp_path,prompt=P08_RAW,key=KEY)
+    transport=History([user(P08_RENDERED)])
+    eng=GatewayEngine(store,transport)
+    try:
+        assert await eng.reconcile_request(rid)
+        assert store.get_request(rid)["status"]=="completed"
+        assert store.get_request(rid)["user_message_id"]=="provider-user-1"
+        messages=store.get_messages(sid)
+        assert len(messages)==1
+        assert messages[0]["content"]==P08_RENDERED
+        assert messages[0]["request_id"]==rid
+        assert not transport.calls
+    finally:store.close()
+
+
+@pytest.mark.asyncio
+async def test_p08_rendered_self_link_matches_prior_provider_sync(tmp_path):
+    store,sid,rid=prepared(tmp_path,prompt=P08_RAW,key=KEY)
+    store.insert_message(sid,"user",P08_RENDERED,message_id="provider-user-1")
+    eng=GatewayEngine(store,History([user(P08_RENDERED)]))
+    try:
+        assert await eng.reconcile_request(rid)
+        messages=store.get_messages(sid)
+        assert len(messages)==1
+        assert messages[0]["content"]==P08_RENDERED
+        assert messages[0]["request_id"]==rid
+    finally:store.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_text",[
+    P08_RENDERED.replace("](https://chatgpt.com/c/","](https://evil.example/c/"),
+    P08_RENDERED+" invisible mutation",
+    P08_RAW.replace(P08_URL,f"[{P08_URL}](https://evil.example/c/{CID})"),
+    P08_RAW.replace(P08_URL,f"[{P08_URL}](http://chatgpt.com/c/{CID})"),
+    P08_RAW.replace(P08_URL,f"[{P08_URL}]({P08_URL}) EXTRA"),
+])
+async def test_p08_rendered_link_tampering_fails_closed(tmp_path,provider_text):
+    store,sid,rid=prepared(tmp_path,prompt=P08_RAW,key=KEY)
+    eng=GatewayEngine(store,History([user(provider_text)]))
+    try:
+        assert not await eng.reconcile_request(rid)
+        assert store.get_request(rid)["status"]=="unknown"
+        assert store.get_request(rid)["user_message_id"] is None
+    finally:store.close()
+
+
+@pytest.mark.asyncio
+async def test_p08_rendered_and_plain_duplicate_is_ambiguous(tmp_path):
+    store,sid,rid=prepared(tmp_path,prompt=P08_RAW,key=KEY)
+    eng=GatewayEngine(store,History([user(P08_RENDERED,mid="u1"),
+                                      user(P08_RAW,mid="u2")]))
+    try:
+        assert not await eng.reconcile_request(rid)
+        assert store.get_request(rid)["user_message_id"] is None
+    finally:store.close()
