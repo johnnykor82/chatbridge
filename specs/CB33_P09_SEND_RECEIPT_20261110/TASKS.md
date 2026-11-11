@@ -16,4 +16,5 @@
 - [x] P06B-1 2 RED native button and exception cases, 2 GREEN Enter fallback controls
 - [x] P06B-2 one-gesture fix, native Send click/Enter fallback/exception tests GREEN; combined18 focused tests pass
 - [x] P06B-3 full 324 tests + 4 subtests PASS; Ruff/compile/diff PASS; source Converge/SDD docs verified; Git commit e9c78f7. Owner deploy only after in-flight request terminal
-- [ ] P06B-4 continue P09 isolated E2E only after current bootstrap source proof; never resend unknown request
+- [x] P06B-4 scoped owner-only immutable release 0.2.0b23-6fa955903057; fresh SHA/SQLite-verified backup, auth/health/no429 and 8788 PASS; original UNKNOWN not resent
+- [ ] P06/P07 isolated two-worker live E2E and final Converge BLOCKED: bootstrap terminal UNKNOWN without provider proof; alternate conversation requires new owner approval under approved PLAN
