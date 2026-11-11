@@ -593,7 +593,18 @@ class BrowserTransport:
             raise RuntimeError("ChatGPT reasoning/model picker unavailable") from exc
         try:
             control = page.locator("[data-reasoning-slider]").first
-            await control.wait_for(state="visible", timeout=18000)
+            try:
+                await control.wait_for(state="visible", timeout=18000)
+            except PlaywrightTimeoutError:
+                # A fresh background tab can lose the open picker during SPA
+                # hydration. One bounded recovery is allowed ONLY before Send.
+                checker = getattr(self, "_rate_limit_checker", None)
+                if checker is not None and checker() > 0:
+                    raise ProviderRateLimitError("Provider cooldown during reasoning picker recovery")
+                log.warning("ChatGPT reasoning slider hidden; reopening menu once before Send")
+                await page.keyboard.press("Escape")
+                await picker.evaluate("(el) => el.click()")
+                await control.wait_for(state="visible", timeout=18000)
             value = control.locator("[aria-valuenow]").first
             actual = int(await value.get_attribute("aria-valuenow") or -1)
             target = levels[effort]

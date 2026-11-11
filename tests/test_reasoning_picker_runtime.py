@@ -65,5 +65,6 @@ async def test_different_effort_missing_slider_still_blocks_before_send():
     transport = object.__new__(BrowserTransport)
     with pytest.raises(PlaywrightTimeoutError):
         await transport._configure_reasoning_effort(page, "high")
-    picker.evaluate.assert_awaited_once()
-    page.keyboard.press.assert_awaited_once_with("Escape")
+    assert picker.evaluate.await_count == 2  # one bounded reopen before Send
+    assert control.wait_for.await_count == 2
+    assert page.keyboard.press.await_count == 2
