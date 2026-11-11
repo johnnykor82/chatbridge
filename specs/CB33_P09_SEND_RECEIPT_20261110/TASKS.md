@@ -21,7 +21,7 @@
 
 ## P06C owner-approved 2026-11-11 expansion
 - [x] P06C-01 official Agentic SDD/Evolving Specs verified online; SPEC/ARCH/PLAN/TASKS/ANALYZE PASS; backup 4 SHA256 and 2 SQLite integrity ok; BF33 paused; preflight no429
-- [ ] P06C-02 one fresh ChatBridge orchestrator session, exactly one marker-only bootstrap, strict authenticated source proof, stop on unknown/429
-- [ ] P06C-03 register distinct owner-bound Watcher project; exactly two new BF23 executors with Supervisor criteria, capture overlap evidence
-- [ ] P06C-04 immutable result verification, ACK and reviewed goal approval; validate delivery order and absence of duplicate Send
+- [x] P06C-02 one fresh isolated ChatBridge :59496 session; one HTTP202 bootstrap request terminal completed with user+assistant IDs, unique assistant marker WCcf405a1c82222f0e verified by Watcher, original unknown untouched
+- [ ] P06C-03 PARTIAL: registered isolated project and queued exactly two new workers. A FAILED PRE-SEND reasoning slider timeout (Watcher uncertain; no resend); B completed with provider HTTP accepted. True overlap NOT PROVEN.
+- [ ] P06C-04 BLOCKED: B immutable SHA-verified report and Supervisor review_ready; notification READY attempts0 (Watcher session_import TransportError due standard/persistent mode mismatch); no ACK/approval permitted, A pre-Send failure. No delivery-order/overlap acceptance.
 - [ ] P07 Converge, verify BF33 original immutability, update SDD docs and Git commit, do not claim unverified acceptance
