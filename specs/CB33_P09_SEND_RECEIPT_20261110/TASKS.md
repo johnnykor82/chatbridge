@@ -15,5 +15,5 @@
 
 - [x] P06B-1 2 RED native button and exception cases, 2 GREEN Enter fallback controls
 - [x] P06B-2 one-gesture fix, native Send click/Enter fallback/exception tests GREEN; combined18 focused tests pass
-- [ ] P06B-3 full 324 tests + 4 subtests PASS; Ruff/compile/diff PASS; source Converge/SDD docs verified, Git commit pending. Owner deploy only after in-flight request terminal
+- [x] P06B-3 full 324 tests + 4 subtests PASS; Ruff/compile/diff PASS; source Converge/SDD docs verified; Git commit e9c78f7. Owner deploy only after in-flight request terminal
 - [ ] P06B-4 continue P09 isolated E2E only after current bootstrap source proof; never resend unknown request
