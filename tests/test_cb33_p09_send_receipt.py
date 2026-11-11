@@ -21,6 +21,14 @@ def fake_browser(states):
     editor.wait_for = AsyncMock()
     editor.press = AsyncMock()
     page.locator.return_value = editor
+    # This fixture specifically tests Enter fallback without a native Send
+    # button. Native enabled button behavior is covered by P06B regressions.
+    send_button = Mock()
+    send_button.first = send_button
+    send_button.count = AsyncMock(return_value=0)
+    send_button.is_enabled = AsyncMock(return_value=False)
+    send_button.click = AsyncMock()
+    page.get_by_role.return_value = send_button
     page.is_closed.return_value = False
     page.add_init_script = AsyncMock()
     page.goto = AsyncMock()

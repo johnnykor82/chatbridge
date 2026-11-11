@@ -8,3 +8,5 @@ R6: RED/GREEN late ID/HTTP200, absent ID, post-Send 429, cancelled/restarted, on
 R7: New two-worker test in isolated new project: simultaneous execution, out-of-order delivery/ACK, no unverified retries. Old BF33 unchanged. Pause on 429.
 
 P06A 2026-11-10: Network observer must ignore unrelated HTTP POST requests before reading/parsing body. Unrelated non-JSON telemetry POST cannot crash Playwright event dispatch, interfere with reasoning picker, or change Send state. Only original ChatGPT full-prompt turn request can contribute evidence. Malformed original POST must fail closed without leaking body or retrying. Never impose arbitrary content limits.
+
+P06B new-chat send path 2026-11-10: For fresh conversation, prefer an enabled native ChatGPT Send button exactly ONCE, just as for existing conversation, instead of unconditionally Enter. If no enabled button exists use one Enter fallback; never click then Enter on uncertain outcome. Original attempt journal must be persisted before either gesture and HTTP source evidence required before receipt. No changes to old BF33 or currently in-flight P09 bootstrap.

@@ -1,3 +1,4 @@
 # CB33 P09 Bug Test — source verified / live pending
 Before: four initial RED failures; additional independent network callback and client-only Watcher false completion RED; two atomic HTTP journal RED.
 After: 10 focused P09, 30 browser lifecycle, entire 317+4 ChatBridge suite PASS; critical Ruff/compile/source inventory PASS. Verifies exact one Send via fake Playwright and failure/no-resend logic; 130000 original prompt whole-content test. Live original A historical truth remains unproven and is intentionally NOT retransmitted. Status partial pending owner-only rollout, new two-worker real E2E and external outage replay.
+P06B-3 2026-11-11: RED2/GREEN4 native button/fallback/exception gesture controls; full P09 324 tests + 4 subtests PASS, Ruff E9/F821-F823, compileall and diff --check PASS (local .venv restored offline). No provider send, original uncertain bootstrap immutable; full operational Converge awaits verified new two-worker acceptance.

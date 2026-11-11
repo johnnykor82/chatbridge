@@ -1031,15 +1031,15 @@ class BrowserTransport:
             # A crash in the tiny gap between journal and browser call must
             # fail closed; it is not permission to replay the user message.
             yield TransportEvent("send_attempted")
-            if conversation_id:
-                submitted_attempted = True
-                button = page.get_by_role("button", name=re.compile(r"^(Send|Отправить)$", re.I))
-                if await button.count() and await button.first.is_enabled():
-                    await button.first.click()
-                else:
-                    await editor.press("Enter")
+            # A fresh chat uses the same native Send control as an existing
+            # conversation. Enter may insert a newline in some accounts,
+            # leaving a durable attempted request with no original POST.
+            # Choose ONE gesture, never fall back after an uncertain click.
+            submitted_attempted = True
+            button = page.get_by_role("button", name=re.compile(r"^(Send|Отправить)$", re.I))
+            if await button.count() and await button.first.is_enabled():
+                await button.first.click()
             else:
-                submitted_attempted = True
                 await editor.press("Enter")
             # No fixed post-click ID deadline. Both client ID and provider
             # HTTP success may arrive asynchronously; observe local signals
