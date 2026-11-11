@@ -17,4 +17,11 @@
 - [x] P06B-2 one-gesture fix, native Send click/Enter fallback/exception tests GREEN; combined18 focused tests pass
 - [x] P06B-3 full 324 tests + 4 subtests PASS; Ruff/compile/diff PASS; source Converge/SDD docs verified; Git commit e9c78f7. Owner deploy only after in-flight request terminal
 - [x] P06B-4 scoped owner-only immutable release 0.2.0b23-6fa955903057; fresh SHA/SQLite-verified backup, auth/health/no429 and 8788 PASS; original UNKNOWN not resent
-- [ ] P06/P07 isolated two-worker live E2E and final Converge BLOCKED: bootstrap terminal UNKNOWN without provider proof; alternate conversation requires new owner approval under approved PLAN
+- [ ] P06/P07 isolated two-worker live E2E and final Converge PREVIOUSLY BLOCKED by terminal UNKNOWN; owner explicitly approved a NEW isolated conversation on 2026-11-11. Existing UNKNOWN must not be retried.
+
+## P06C owner-approved 2026-11-11 expansion
+- [x] P06C-01 official Agentic SDD/Evolving Specs verified online; SPEC/ARCH/PLAN/TASKS/ANALYZE PASS; backup 4 SHA256 and 2 SQLite integrity ok; BF33 paused; preflight no429
+- [ ] P06C-02 one fresh ChatBridge orchestrator session, exactly one marker-only bootstrap, strict authenticated source proof, stop on unknown/429
+- [ ] P06C-03 register distinct owner-bound Watcher project; exactly two new BF23 executors with Supervisor criteria, capture overlap evidence
+- [ ] P06C-04 immutable result verification, ACK and reviewed goal approval; validate delivery order and absence of duplicate Send
+- [ ] P07 Converge, verify BF33 original immutability, update SDD docs and Git commit, do not claim unverified acceptance
