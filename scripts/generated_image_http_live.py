@@ -3,8 +3,8 @@
 Uses isolated SQLite and TestServer. Generates only one simple image.
 """
 import asyncio
-import os
 import json
+import os
 import tempfile
 from pathlib import Path
 

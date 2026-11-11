@@ -1,5 +1,6 @@
 import pytest
-from chatbridge.media import parse_message, MediaError
+
+from chatbridge.media import MediaError, parse_message
 
 
 @pytest.mark.parametrize("size", [130000, 1000000])

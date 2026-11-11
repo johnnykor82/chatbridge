@@ -9,7 +9,6 @@ import math
 import re
 from typing import Any
 
-
 _CHAT_SELF_URL = re.compile(
     r"https://chatgpt[.]com/c/"
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"

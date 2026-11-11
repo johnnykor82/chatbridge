@@ -1,3 +1,7 @@
+## 0.2.0b24 — 2026-11-11
+- CI convergence for beta.23: fix Ruff import ordering, one-line compound statement formatting and one unused local in developer smoke script; no change to provider Send/receipt behavior.
+- Retains the proven P09 source-bound Send receipts and bounded pre-Send reasoning picker recovery. Full regression 327 tests + 4 subtests and Ruff lint passed.
+
 ## 0.2.0b23 — 2026-11-08
 - Optimize strict indexed search verification using the existing authenticated history reader on the same Search page. No per-candidate tabs or slow DOM text scans. Retains provider-ID, exact marker, role, duplicate, authorization and rate-limit checks. Mac Server local diagnostic candidate only.
 

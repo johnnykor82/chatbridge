@@ -1,11 +1,12 @@
 """Live end-to-end: ChatGPT returns a CSV and Python script in one answer."""
 import asyncio
-import os
 import json
+import os
 import tempfile
 from pathlib import Path
 
 from aiohttp.test_utils import TestClient, TestServer
+
 from chatbridge.browser_transport import BrowserTransport
 from chatbridge.config import Settings
 from chatbridge.engine import GatewayEngine

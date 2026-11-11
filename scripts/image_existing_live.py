@@ -5,21 +5,24 @@ image it produced, validates it and serves it via the gateway HTTP endpoint.
 """
 import asyncio
 import json
+import os
 import tempfile
 from pathlib import Path
 
 from aiohttp.test_utils import TestClient, TestServer
 
-from chatbridge.browser_transport import BACKEND_JS, DOWNLOAD_ASSET_JS, _turn_image_refs
-from chatbridge.browser_transport import BrowserTransport
+from chatbridge.browser_transport import (
+    BACKEND_JS,
+    DOWNLOAD_ASSET_JS,
+    BrowserTransport,
+    _turn_image_refs,
+)
 from chatbridge.config import Settings
 from chatbridge.engine import GatewayEngine
 from chatbridge.media import verify_image
 from chatbridge.mock_transport import MockTransport
 from chatbridge.server import make_app
 from chatbridge.store import Store
-
-import os
 
 CONVERSATION_ID = os.getenv("CHATBRIDGE_TEST_CONVERSATION_ID")
 if not CONVERSATION_ID:

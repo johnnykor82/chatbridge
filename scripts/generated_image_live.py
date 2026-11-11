@@ -3,9 +3,8 @@
 Independent of production HTTP server. Stops after 240 seconds.
 """
 import asyncio
-import os
-import base64
 import json
+import os
 import tempfile
 from pathlib import Path
 

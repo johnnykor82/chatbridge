@@ -4,8 +4,8 @@ Sends a synthetic red triangle and blue rectangle through authenticated Chrome.
 Only checks completion; doesn't modify the production gateway.
 """
 import asyncio
-import os
 import json
+import os
 from pathlib import Path
 
 from chatbridge.browser_transport import BrowserTransport

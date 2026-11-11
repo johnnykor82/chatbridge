@@ -3,7 +3,9 @@ Uses background CDP tab, does not log credentials or patient data.
 """
 import asyncio
 from pathlib import Path
+
 from playwright.async_api import async_playwright
+
 
 async def main():
     port=int(Path.home().joinpath('.chatbridge/chrome-profile/DevToolsActivePort').read_text().splitlines()[0])

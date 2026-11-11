@@ -1,8 +1,8 @@
 """Opt-in live native HTTP image upload test in an isolated temporary database."""
 import asyncio
-import os
 import base64
 import json
+import os
 import tempfile
 from pathlib import Path
 

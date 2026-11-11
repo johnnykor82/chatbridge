@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from test_reasoning_picker_runtime import page_with_picker
 
 from chatbridge.browser_transport import BrowserTransport
-from test_reasoning_picker_runtime import page_with_picker
 
 
 @pytest.mark.asyncio

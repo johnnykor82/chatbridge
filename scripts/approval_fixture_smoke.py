@@ -1,8 +1,11 @@
 """Isolated local HTML fixtures: scope selection and fallback without invoking MCP."""
 import asyncio
 import json
+
 from playwright.async_api import async_playwright
+
 from chatbridge.browser_transport import BrowserTransport
+
 
 async def main():
     t=BrowserTransport("http://127.0.0.1:9335")

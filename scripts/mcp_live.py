@@ -3,9 +3,10 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
-from chatbridge.store import Store
-from chatbridge.engine import GatewayEngine
+
 from chatbridge.browser_transport import BrowserTransport
+from chatbridge.engine import GatewayEngine
+from chatbridge.store import Store
 
 PROMPT=(
  "Технический тест. Вызови подключённый Mac Control: "
