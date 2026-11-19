@@ -14,5 +14,5 @@
 - [x] Mac Server beta25 release+health/auth/isolated nonmedical real completed smoke
 - [x] jkmac beta25 release+health/SHA/SQLite integrity
 - [x] Mac Server safe nonmedical full user/assistant ACK end-to-end smoke
-- [ ] jkmac authenticated smoke: blocked by /ready 503 (auth_required_or_browser_unavailable), manual profile check needed
+- [x] jkmac authenticated smoke: один изолированный немедицинский запрос `87927a94-41ce-4693-9ccc-a9dd34a75b92`, user+assistant ACK, ожидаемый ответ и /ready HTTP 200.
 - [x] Final source/deployment-integrity Converge, update backlog and commit; remote-auth caveat recorded
