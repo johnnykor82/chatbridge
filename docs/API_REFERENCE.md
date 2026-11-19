@@ -430,3 +430,7 @@ The endpoint reads ChatGPT via the gateway's owned browser and does not alter
 the conversation. It enables an HTTP-only Watcher to determine executor task
 completion without DOM/CDP access. A tool message or an in-progress assistant
 message cannot be classified as completed.
+
+
+### ChatBridge beta.25 browser send diagnostics (CB34)
+In managed browser mode ChatBridge requires one unique visible/enabled native Send button; it does not use `Enter` when the Send control is missing or disabled. The request remains safely retryable when no click has occurred. After a click the original provider POST must be correlated with its own HTTP 2xx response and user message identifier. If the source receipt is not confirmed within `CHATBRIDGE_SEND_RECEIPT_TIMEOUT` (default 60 seconds; allowed 10–120), the request transitions to `unknown` and MUST NOT be automatically replayed. This is independent of `CHATBRIDGE_HARD_TIMEOUT` for already acknowledged generation. Structured `cb34_stage`, `cb34_send_control`, `cb34_receipt_deadline`, `cb34_failure_stage` logs contain only request IDs, stage labels, time, control type and status — never prompts, health data, cookies or tokens.

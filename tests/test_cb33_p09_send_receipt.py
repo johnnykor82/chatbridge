@@ -21,12 +21,14 @@ def fake_browser(states):
     editor.wait_for = AsyncMock()
     editor.press = AsyncMock()
     page.locator.return_value = editor
+    page.url = "https://chatgpt.com/"
     # This fixture specifically tests Enter fallback without a native Send
     # button. Native enabled button behavior is covered by P06B regressions.
     send_button = Mock()
     send_button.first = send_button
-    send_button.count = AsyncMock(return_value=0)
-    send_button.is_enabled = AsyncMock(return_value=False)
+    send_button.count = AsyncMock(return_value=1)
+    send_button.is_enabled = AsyncMock(return_value=True)
+    send_button.is_visible = AsyncMock(return_value=True)
     send_button.click = AsyncMock()
     page.get_by_role.return_value = send_button
     page.is_closed.return_value = False
@@ -65,7 +67,8 @@ async def test_delayed_http200_and_user_id_after_send_are_not_prematurely_unknow
             observed = await anext(stream)
             assert observed.type == "submitted"
             assert observed.message_id == "source-user-1"
-            editor.press.assert_awaited_once_with("Enter")
+            page.get_by_role.return_value.click.assert_awaited_once()
+            editor.press.assert_not_awaited()
     finally:
         await transport.close()
 
@@ -89,7 +92,8 @@ async def test_generated_user_id_without_http_success_is_not_receipt():
             assert intent.type == "send_attempted"
             with pytest.raises(SubmissionUncertainError):
                 await anext(stream)
-            editor.press.assert_awaited_once_with("Enter")
+            page.get_by_role.return_value.click.assert_awaited_once()
+            editor.press.assert_not_awaited()
     finally:
         await transport.close()
 
@@ -167,7 +171,7 @@ async def test_page_network_source_id_and_http200_rescue_missing_dom_hook():
         for callback in handlers.get("response", []):
             callback(response)
 
-    editor.press.side_effect = send_one
+    page.get_by_role.return_value.click.side_effect = send_one
     try:
         async with aclosing(
             transport.generate(
@@ -179,7 +183,7 @@ async def test_page_network_source_id_and_http200_rescue_missing_dom_hook():
             assert ack.type == "submitted"
             assert ack.message_id == "network-user-1"
             assert ack.parent_message_id == "parent-1"
-            editor.press.assert_awaited_once()
+            page.get_by_role.return_value.click.assert_awaited_once()
     finally:
         await transport.close()
 
@@ -220,7 +224,7 @@ async def test_unrelated_network_post_never_fakes_source_receipt():
         for callback in handlers.get("response", []):
             callback(response)
 
-    editor.press.side_effect = send_one
+    page.get_by_role.return_value.click.side_effect = send_one
     try:
         async with aclosing(
             transport.generate(
@@ -230,7 +234,7 @@ async def test_unrelated_network_post_never_fakes_source_receipt():
             assert (await anext(stream)).type == "send_attempted"
             with pytest.raises((TimeoutError, SubmissionUncertainError)):
                 await anext(stream)
-            editor.press.assert_awaited_once()
+            page.get_by_role.return_value.click.assert_awaited_once()
     finally:
         await transport.close()
 
@@ -267,7 +271,7 @@ async def test_conflicting_browser_and_network_message_ids_fail_closed():
         for callback in handlers.get("response", []):
             callback(response)
 
-    editor.press.side_effect = send_one
+    page.get_by_role.return_value.click.side_effect = send_one
     try:
         async with aclosing(
             transport.generate(
@@ -277,7 +281,7 @@ async def test_conflicting_browser_and_network_message_ids_fail_closed():
             assert (await anext(stream)).type == "send_attempted"
             with pytest.raises(SubmissionUncertainError):
                 await anext(stream)
-            editor.press.assert_awaited_once()
+            page.get_by_role.return_value.click.assert_awaited_once()
     finally:
         await transport.close()
 

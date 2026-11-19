@@ -47,6 +47,7 @@ def main():
             settings.verify_interval_seconds,
             reasoning_effort=settings.reasoning_effort,
             visible_background=settings.browser_mode == "managed" and not settings.chrome_headless,
+            send_receipt_timeout_seconds=settings.send_receipt_timeout_seconds,
         )
     )
     supervisor = None

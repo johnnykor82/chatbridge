@@ -1,3 +1,9 @@
+## 0.2.0b25 — 2026-11-19
+- Fix icon-only ChatGPT composer Send: prefer unique visible/enabled native button; never substitute unverified Enter. Missing/disabled control fails before durable Send intent.
+- Add source-bound original POST+HTTP receipt watchdog (default 60s, validated 10..120 via CHATBRIDGE_SEND_RECEIPT_TIMEOUT). Unknown after a click remains quarantined and is never automatically replayed; long confirmed-generation timeout is unaffected.
+- Reject expired login before Send, record privacy-preserving stage timings/reasons, preserve exact request/body correlation and durable single-click receipts. Test post-click DOM failures and icon-only/disabled controls.
+- Retain all preexisting browser isolation, rate-limit, watcher and media behavior. Mac Server and jkmac deployment evidence is recorded in CB34 specs.
+
 ## 0.2.0b24 — 2026-11-11
 - CI convergence for beta.23: fix Ruff import ordering, one-line compound statement formatting and one unused local in developer smoke script; no change to provider Send/receipt behavior.
 - Retains the proven P09 source-bound Send receipts and bounded pre-Send reasoning picker recovery. Full regression 327 tests + 4 subtests and Ruff lint passed.

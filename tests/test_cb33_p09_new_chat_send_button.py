@@ -18,9 +18,19 @@ def fake_page(button_count=1, enabled=True, click_fails=False):
     button.first = button
     button.count = AsyncMock(return_value=button_count)
     button.is_enabled = AsyncMock(return_value=enabled)
+    button.is_visible = AsyncMock(return_value=True)
     button.click = AsyncMock(side_effect=RuntimeError("uncertain click") if click_fails else None)
+    css_button = Mock()
+    css_button.first = css_button
+    css_button.count = AsyncMock(return_value=0)
+    css_button.is_enabled = AsyncMock(return_value=True)
+    css_button.is_visible = AsyncMock(return_value=True)
+    css_button.click = AsyncMock()
     page = Mock()
-    page.locator.return_value = editor
+    page.locator.side_effect = lambda selector: (
+        editor if "contenteditable" in selector else css_button)
+    page.css_button = css_button
+    page.url = "https://chatgpt.com/g/g-p-" + "a"*32 + "/project"
     page.get_by_role.return_value = button
     page.add_init_script = AsyncMock()
     page.goto = AsyncMock()
@@ -59,7 +69,7 @@ async def test_new_chat_prefers_enabled_native_send_button_once():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("count,enabled", [(0, True), (1, False)])
-async def test_new_chat_enter_fallback_only_without_usable_send(count, enabled):
+async def test_new_chat_missing_or_disabled_native_send_is_safe_not_sent(count, enabled):
     transport, button, editor = fake_page(button_count=count, enabled=enabled)
     try:
         async with aclosing(
@@ -67,10 +77,29 @@ async def test_new_chat_enter_fallback_only_without_usable_send(count, enabled):
                 session_id="s", conversation_id=None, prompt="original", request_id="rid"
             )
         ) as stream:
+            with pytest.raises(RuntimeError, match="native Send control unavailable"):
+                await anext(stream)
+        button.click.assert_not_awaited()
+        editor.press.assert_not_awaited()
+    finally:
+        await transport.close()
+
+
+@pytest.mark.asyncio
+async def test_icon_only_native_send_selected_when_role_name_is_missing():
+    transport, button, editor = fake_page(button_count=0)
+    # ChatGPT's icon-only send button has data-testid, but no English/Russian label.
+    page = transport._new_page.return_value
+    page.css_button.count = AsyncMock(return_value=1)
+    try:
+        async with aclosing(transport.generate(
+            session_id="s",conversation_id=None,prompt="original",request_id="rid"
+        )) as stream:
             assert (await anext(stream)).type == "send_attempted"
             assert (await anext(stream)).type == "submitted"
+        page.css_button.click.assert_awaited_once()
         button.click.assert_not_awaited()
-        editor.press.assert_awaited_once_with("Enter")
+        editor.press.assert_not_awaited()
     finally:
         await transport.close()
 

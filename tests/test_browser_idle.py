@@ -474,6 +474,14 @@ async def test_closing_generate_after_first_event_closes_page_and_releases_lease
     editor.wait_for = AsyncMock()
     editor.press = AsyncMock()
     page = Mock()
+    page.url = "https://chatgpt.com/"
+    send_button = Mock()
+    send_button.first = send_button
+    send_button.count = AsyncMock(return_value=1)
+    send_button.is_enabled = AsyncMock(return_value=True)
+    send_button.is_visible = AsyncMock(return_value=True)
+    send_button.click = AsyncMock()
+    page.get_by_role.return_value = send_button
     page.locator.return_value = editor
     page.is_closed.return_value = False
     page.add_init_script = AsyncMock()

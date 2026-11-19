@@ -34,12 +34,14 @@ def fake_browser():
     editor.wait_for = AsyncMock()
     editor.press = AsyncMock()
     page.locator.return_value = editor
+    page.url = "https://chatgpt.com/"
     # This fixture exercises the documented Enter fallback when the native
     # Send button is absent. P06B tests cover the enabled button separately.
     send_button = Mock()
     send_button.first = send_button
-    send_button.count = AsyncMock(return_value=0)
-    send_button.is_enabled = AsyncMock(return_value=False)
+    send_button.count = AsyncMock(return_value=1)
+    send_button.is_enabled = AsyncMock(return_value=True)
+    send_button.is_visible = AsyncMock(return_value=True)
     send_button.click = AsyncMock()
     page.get_by_role.return_value = send_button
     page.is_closed.return_value = False
@@ -91,7 +93,8 @@ async def test_malformed_source_post_fails_closed_without_listener_exception():
             assert (await anext(stream)).type == "send_attempted"
             with pytest.raises((SubmissionUncertainError,TimeoutError)):
                 await anext(stream)
-            editor.press.assert_awaited_once_with("Enter")
+            page.get_by_role.return_value.click.assert_awaited_once()
+            editor.press.assert_not_awaited()
     finally:
         await transport.close()
 
@@ -124,6 +127,7 @@ async def test_exact_json_source_post_preserves_http_ack():
             ack=await anext(stream)
             assert ack.type=="submitted" and ack.message_id=="id-original"
             assert ack.meta["http_status"]==200
-            editor.press.assert_awaited_once_with("Enter")
+            page.get_by_role.return_value.click.assert_awaited_once()
+            editor.press.assert_not_awaited()
     finally:
         await transport.close()

@@ -408,9 +408,11 @@ class BrowserTransport:
         reasoning_effort: str = "high",
         visible_background: bool = False,
         browser_supervisor=None,
+        send_receipt_timeout_seconds: float = 60.0,
     ):
         self.cdp_url = cdp_url
         self.hard_timeout = hard_timeout_seconds
+        self.send_receipt_timeout_seconds = float(send_receipt_timeout_seconds)
         self.interval = verify_interval_seconds
         self.reasoning_effort = reasoning_effort
         self.visible_background = visible_background
@@ -811,6 +813,34 @@ class BrowserTransport:
             if not page.is_closed():
                 await page.close()
 
+    @staticmethod
+    async def _native_send_control(page):
+        """Select a unique, enabled native Send. Never guess Enter semantics.
+
+        A newly rendered ChatGPT composer may have an icon-only button
+        without accessible "Send" text. Do not treat its absence from the
+        name-based selector as evidence that Enter will submit.
+        """
+        candidates = (
+            ("role", page.get_by_role(
+                "button", name=re.compile(
+                    r"^(Send|Отправить|Send prompt|Отправить сообщение)$", re.I))),
+            ("testid-send", page.locator('button[data-testid="send-button"]')),
+            ("testid-composer", page.locator('button[data-testid="composer-send-button"]')),
+            ("aria-send", page.locator(
+                'button[aria-label="Send"],button[aria-label="Отправить"]')),
+        )
+        for source, control in candidates:
+            matches = await control.count()
+            if matches != 1:
+                continue
+            candidate = control.first
+            if await candidate.is_visible() and await candidate.is_enabled():
+                return source, candidate
+        raise RuntimeError(
+            "ChatGPT native Send control unavailable before attempt; no message sent"
+        )
+
     @_browser_stream
     async def generate(
         self,
@@ -837,8 +867,18 @@ class BrowserTransport:
         log.info("cb33_request_tab_attached request_id=%s session_id=%s target_id=%s",
                  request_id, session_id, target_id)
         submitted_attempted = False
+        stage = "initializing"
         emitted = ""
         start = time.monotonic()
+        # A request without a confirmed source-bound POST must not consume
+        # the 30-minute model-generation budget. Fail closed at 60 seconds.
+        send_receipt_timeout = self.send_receipt_timeout_seconds
+
+        def stage_event(stage_name: str) -> None:
+            nonlocal stage
+            stage = stage_name
+            log.info("cb34_stage request_id=%s stage=%s elapsed_ms=%d",
+                     request_id, stage, int((time.monotonic()-start)*1000))
         # A DOM probe is local. A backend history probe costs authenticated
         # provider traffic (auth/session + conversation) and is expensive in
         # bulk; keep it well below one poll per two seconds per active turn.
@@ -949,11 +989,15 @@ class BrowserTransport:
                     if conversation_id
                     else "https://chatgpt.com/"
                 )
+            stage_event("navigation")
             log.info("cb33_navigation_started request_id=%s session_id=%s target_id=%s",
                      request_id, session_id, target_id)
             await page.goto(target, wait_until="domcontentloaded", timeout=40000)
             log.info("cb33_navigation_finished request_id=%s session_id=%s target_id=%s",
                      request_id, session_id, target_id)
+            if re.search(r"/auth/(?:login|signin|register)(?:[/?#]|$)", page.url, re.I):
+                raise RuntimeError("ChatGPT authentication required before Send")
+            stage_event("authentication_ok")
             if temporary:
                 temporary_toggle = page.get_by_role(
                     "button",
@@ -979,7 +1023,9 @@ class BrowserTransport:
             # Check the usable composer *after* any provider-directed load retry.
             # A 429 page has no editor; checking it first would bypass the retry.
 
+            stage_event("model_setup")
             await self._configure_reasoning_effort(page, reasoning_effort or self.reasoning_effort)
+            stage_event("editor_wait")
             editor = page.locator('div[contenteditable="true"].ProseMirror').first
             await editor.wait_for(state="visible", timeout=30000)
             baseline_state = await page.evaluate(DOM_JS)
@@ -996,6 +1042,7 @@ class BrowserTransport:
                     reasoning_effort or self.reasoning_effort,
                 )
             if images:
+                stage_event("attachments")
                 uploaded = []
                 for i, image in enumerate(images):
                     uploaded.append(
@@ -1035,27 +1082,26 @@ class BrowserTransport:
                         raise RuntimeError("ChatGPT file attachment did not become ready")
             if self._rate_limit_checker() > 0:
                 raise ProviderRateLimitError("Shared provider cooldown before submission")
+            stage_event("composer_fill")
             await self._fill_composer(page, editor, prompt)
             if self._rate_limit_checker() > 0:
                 raise ProviderRateLimitError("Shared provider cooldown before pressing Send")
+            stage_event("native_send_preflight")
+            send_source, native_button = await self._native_send_control(page)
+            log.info("cb34_send_control request_id=%s source=%s",request_id,send_source)
             # Persist original Send intent BEFORE the first and ONLY click.
             # A crash in the tiny gap between journal and browser call must
             # fail closed; it is not permission to replay the user message.
             yield TransportEvent("send_attempted")
-            # A fresh chat uses the same native Send control as an existing
-            # conversation. Enter may insert a newline in some accounts,
-            # leaving a durable attempted request with no original POST.
-            # Choose ONE gesture, never fall back after an uncertain click.
+            # One verified native button click, never a fallback Enter/second
+            # click. A click alone is not proof of provider submission.
             submitted_attempted = True
-            button = page.get_by_role("button", name=re.compile(r"^(Send|Отправить)$", re.I))
-            if await button.count() and await button.first.is_enabled():
-                await button.first.click()
-            else:
-                await editor.press("Enter")
-            # No fixed post-click ID deadline. Both client ID and provider
-            # HTTP success may arrive asynchronously; observe local signals
-            # until original turn timeout or an explicit failure. Do not click
-            # again when either is absent.
+            stage_event("send_click")
+            await native_button.click()
+            click_at = time.monotonic()
+            stage_event("awaiting_source_receipt")
+            # Keep the long generation deadline only AFTER source-bound HTTP
+            # acceptance; no unconfirmed Send should silently wait 30 minutes.
             # A generated client ID alone cannot certify provider receipt.
             first_submitted = False
             initial_conversation = conversation_id
@@ -1066,6 +1112,13 @@ class BrowserTransport:
                 try:
                     dom = await page.evaluate(DOM_JS)
                 except Exception:
+                    # An unreachable DOM is not permission to poll forever
+                    # without a source-bound send receipt.
+                    if not first_submitted and time.monotonic()-click_at >= send_receipt_timeout:
+                        raise SubmissionUncertainError(
+                            "Original Send receipt unconfirmed after browser DOM errors; "
+                            "do not automatically retransmit"
+                        )
                     await asyncio.sleep(1)
                     continue
                 url = dom.get("url", "")
@@ -1127,6 +1180,7 @@ class BrowserTransport:
                         },
                     )
                     first_submitted = True
+                    stage_event("source_receipt_verified")
                     verification = VerificationSchedule(time.monotonic(), initial_probe_delay)
                     yield TransportEvent("thinking")
                 elif not first_submitted and cid and not initial_conversation:
@@ -1292,12 +1346,27 @@ class BrowserTransport:
                     )
                 if dom.get("httpStatus") not in (None, 200):
                     raise RuntimeError(f"Browser request returned HTTP {dom['httpStatus']}")
+                if not first_submitted and time.monotonic()-click_at >= send_receipt_timeout:
+                    log.warning(
+                        "cb34_receipt_deadline request_id=%s stage=%s "
+                        "post_seen=%s http_status=%s elapsed_ms=%d",
+                        request_id,stage,original_turn["request"] is not None,
+                        original_turn["http_status"],
+                        int((time.monotonic()-click_at)*1000))
+                    raise SubmissionUncertainError(
+                        "Original Send receipt unconfirmed within 60s; "
+                        "do not automatically retransmit"
+                    )
                 # No provider request is performed by this sleep. Long prompt
                 # prefilling has no reason for a 2Hz browser DOM probe either.
                 quiet = bool(verification and not emitted and not dom.get("sseCompleted"))
                 await asyncio.sleep(2.0 if quiet else 0.7)
             raise TimeoutError("No confirmed end_turn within configured hard timeout")
         except Exception as exc:
+            log.warning("cb34_failure_stage request_id=%s stage=%s "
+                        "attempted=%s elapsed_ms=%d failure_class=%s",
+                        request_id,stage,submitted_attempted,
+                        int((time.monotonic()-start)*1000),type(exc).__name__)
             if submitted_attempted:
                 log.warning(
                     "cb33_original_send_unconfirmed request_id=%s "

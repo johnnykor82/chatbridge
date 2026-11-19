@@ -1,0 +1,17 @@
+# Задачи CB34
+- [x] Ознакомиться с актуальным GitHub Spec Kit / Agentic Bug Fix / Evolving Specs
+- [x] Инвентаризация Mac Server и jkmac; двухсторонний backup verified
+- [x] Обновить чистую исходную Git копию до upstream main
+- [x] Assess и документированная воспроизводимая матрица причин
+- [x] Spec/architecture/plan/tasks Analyze coherence gate
+- [x] Native Send button preflight с icon-only селекторами
+- [x] Один click; нет слепого Enter при неготовом контроле
+- [x] Bounded post-click receipt wait, без silent 30 min
+- [x] Stage-specific safe telemetry and error diagnostics
+- [x] Tests of disabled/icon send, no POST, delayed POST, HTTP errors, restart/no duplicates
+- [x] Full regression + source Converge, update docs/backlog after each step
+- [ ] Git commit/push, remote SHA check
+- [ ] Mac Server isolated release installation+health
+- [ ] jkmac isolated release installation+health
+- [ ] Safe end-to-end smoke excluding old uncertain medical request
+- [ ] Final Converge and release verification, update backlog and commit
