@@ -6,7 +6,7 @@
 - [x] Preimplementation Analyze and confirmed asynchronous Send hydration root cause
 - [x] Scoped transport fix with negative tests, documentation/backlog
 - [x] Full 338 ChatBridge+4 subtests and 38 medical tests, Ruff/source Converge
-- [ ] Git commit/push and both-Mac binary deployment if ChatBridge changes
-- [ ] Safe in-memory queue recovery dry run, audit and transaction
+- [x] GitHub commit 3ba7442/push and beta26 release installed/health/auth confirmed on both Macs
+- [x] Safe in-memory exact 10318 recovery dry-run; real DB unchanged\n- [ ] BLOCKED security approval: single-command medical-only LaunchAgent stop, audited recovery+restart
 - [ ] One real medical digest provider ACK, JSON/document/anomaly gates and Telegram receipt
 - [ ] All coalesced children marked done, no duplicate, final docs/commit
