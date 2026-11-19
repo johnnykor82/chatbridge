@@ -1,0 +1,4 @@
+# CB35 Preimplementation Analyze — 2026-11-20
+R1-> no-send browser preflight measurement, no direct provider request. R2-> stage-specific verified Send correctness and negative tests. R3-> immutable verified backups and no unknown replay. R4-> scoped frozen batch owner, durable audit, controlled restart only medical bot. R5-> source-bound provider receipt + strict bot medical validation and Telegram send. R6-> regressions/docs/Git/release/Converge. R7-> scope boundaries. No inconsistent requirements; await exact browser evidence before selecting code change. **PASS pending UI Assess evidence**.
+
+Post-assess evidence closes R1 with concrete same-payload browser sequence. R2 implementation has bounded 25s pre-Send wait; no change in post-click dedupe. Recovery plan requires original failed request with no user ACK and separate unique recovery client key after 8 historical retries, idempotent audit before new enqueue. Analyze PASS.

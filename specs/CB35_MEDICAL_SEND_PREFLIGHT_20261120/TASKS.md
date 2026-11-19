@@ -1,0 +1,12 @@
+# CB35 Tasks
+- [x] Read official current GitHub Spec Kit Agentic BugFix, Agentic SDD, Evolving Specs, Analyze/Converge
+- [x] Inspect medical report states and source-bound ChatBridge failures; Git sync
+- [x] Fresh verified medical backup and identify existing gateway backups
+- [x] Controlled no-send UI investigation exact frozen 4-file report: Send disabled at 0/2s, enabled at 7s; no click
+- [x] Preimplementation Analyze and confirmed asynchronous Send hydration root cause
+- [x] Scoped transport fix with negative tests, documentation/backlog
+- [x] Full 338 ChatBridge+4 subtests and 38 medical tests, Ruff/source Converge
+- [ ] Git commit/push and both-Mac binary deployment if ChatBridge changes
+- [ ] Safe in-memory queue recovery dry run, audit and transaction
+- [ ] One real medical digest provider ACK, JSON/document/anomaly gates and Telegram receipt
+- [ ] All coalesced children marked done, no duplicate, final docs/commit

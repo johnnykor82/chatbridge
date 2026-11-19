@@ -40,7 +40,8 @@ def browser(*, visible_name=True, button_enabled=True, css_count=0,
            "assistantCount":0,"isGenerating":False,"url":url}
     page.evaluate=AsyncMock(side_effect=[baseline]+(states or [empty]*16))
     bt=BrowserTransport("ws://not-used",hard_timeout_seconds=15,
-                        send_receipt_timeout_seconds=0.01)
+                        send_receipt_timeout_seconds=0.01,
+                        send_preflight_timeout_seconds=0.01)
     bt._ensure=AsyncMock(return_value=SimpleNamespace(contexts=[object()]))
     bt._new_page=AsyncMock(return_value=page)
     bt._configure_reasoning_effort=AsyncMock()

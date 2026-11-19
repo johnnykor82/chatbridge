@@ -1,3 +1,8 @@
+## 0.2.0b26 — 2026-11-20
+- Fix medical reports with multiple JSON attachments: native ChatGPT Send may stay disabled for several seconds after upload chips finish and ProseMirror is filled. Wait up to 25 seconds (configurable `CHATBRIDGE_SEND_PREFLIGHT_TIMEOUT` 1–90) for one visible and enabled native Send.
+- Never click a disabled button, press Enter as a fallback or resend an ambiguous post-click attempt. Expiry before Send remains safe-not-sent, with privacy-safe `cb35_send_not_ready` telemetry.
+- Reproduced using the frozen four-attachment cumulative medical report without pressing Send: button disabled at 0/2s, enabled ~7s; synthetic delayed/disabled regression tests preserve one-click safety.
+
 ## 0.2.0b25 — 2026-11-19
 - Fix icon-only ChatGPT composer Send: prefer unique visible/enabled native button; never substitute unverified Enter. Missing/disabled control fails before durable Send intent.
 - Add source-bound original POST+HTTP receipt watchdog (default 60s, validated 10..120 via CHATBRIDGE_SEND_RECEIPT_TIMEOUT). Unknown after a click remains quarantined and is never automatically replayed; long confirmed-generation timeout is unaffected.

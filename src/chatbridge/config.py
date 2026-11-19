@@ -16,6 +16,7 @@ class Settings:
     max_active_sessions: int = 10
     hard_timeout_seconds: float = 1800.0
     send_receipt_timeout_seconds: float = 60.0
+    send_preflight_timeout_seconds: float = 25.0
     first_content_timeout_seconds: float = 300.0
     stream_idle_timeout_seconds: float = 240.0
     verify_interval_seconds: float = 2.0
@@ -40,6 +41,8 @@ class Settings:
             hard_timeout_seconds=float(os.getenv("CHATBRIDGE_HARD_TIMEOUT", "1800")),
             send_receipt_timeout_seconds=float(
                 os.getenv("CHATBRIDGE_SEND_RECEIPT_TIMEOUT", "60")),
+            send_preflight_timeout_seconds=float(
+                os.getenv("CHATBRIDGE_SEND_PREFLIGHT_TIMEOUT", "25")),
             first_content_timeout_seconds=float(os.getenv("CHATBRIDGE_FIRST_TIMEOUT", "300")),
             stream_idle_timeout_seconds=float(os.getenv("CHATBRIDGE_IDLE_TIMEOUT", "240")),
             verify_interval_seconds=float(os.getenv("CHATBRIDGE_VERIFY_INTERVAL", "2")),
@@ -72,6 +75,8 @@ class Settings:
             raise ValueError("CHATBRIDGE_BROWSER_MODE must be managed or external")
         if not (1 <= self.max_active_sessions <= 100):
             raise ValueError("max_active_sessions must be 1..100")
+        if not (1 <= self.send_preflight_timeout_seconds <= 90):
+            raise ValueError("CHATBRIDGE_SEND_PREFLIGHT_TIMEOUT must be 1..90")
         if not (10 <= self.send_receipt_timeout_seconds <= 120):
             raise ValueError("CHATBRIDGE_SEND_RECEIPT_TIMEOUT must be 10..120")
         if self.port < 1 or self.port > 65535:

@@ -48,6 +48,7 @@ def main():
             reasoning_effort=settings.reasoning_effort,
             visible_background=settings.browser_mode == "managed" and not settings.chrome_headless,
             send_receipt_timeout_seconds=settings.send_receipt_timeout_seconds,
+            send_preflight_timeout_seconds=settings.send_preflight_timeout_seconds,
         )
     )
     supervisor = None

@@ -42,7 +42,7 @@ def fake_page(button_count=1, enabled=True, click_fails=False):
     )
     page.close = AsyncMock()
     page.is_closed.return_value = False
-    transport = BrowserTransport("ws://unused", hard_timeout_seconds=10)
+    transport = BrowserTransport("ws://unused", hard_timeout_seconds=10, send_preflight_timeout_seconds=0.01)
     transport._ensure = AsyncMock(return_value=SimpleNamespace(contexts=[object()]))
     transport._new_page = AsyncMock(return_value=page)
     transport._configure_reasoning_effort = AsyncMock()

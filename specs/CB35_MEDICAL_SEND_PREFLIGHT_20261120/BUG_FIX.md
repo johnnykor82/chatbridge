@@ -1,0 +1,2 @@
+# CB35 Fix — 2026-11-20
+Native preflight poll until a single visible enabled native Send becomes available, up to CHATBRIDGE_SEND_PREFLIGHT_TIMEOUT default 25s, bounded 1..90. Only after readiness yield durable send_attempted and click once. Missing/disabled throughout timeout fails safely before click, no Enter fallback. Log only duration and visible/disabled flags. Preserve existing source-bound POST+HTTP2xx/user-ID ACK and 60s uncertain-receipt quarantine. 4 synthetic regression tests for delayed enable, permanent disable, zero-side-effect selection and config validation.

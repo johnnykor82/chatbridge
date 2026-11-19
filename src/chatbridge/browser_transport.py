@@ -409,10 +409,12 @@ class BrowserTransport:
         visible_background: bool = False,
         browser_supervisor=None,
         send_receipt_timeout_seconds: float = 60.0,
+        send_preflight_timeout_seconds: float = 25.0,
     ):
         self.cdp_url = cdp_url
         self.hard_timeout = hard_timeout_seconds
         self.send_receipt_timeout_seconds = float(send_receipt_timeout_seconds)
+        self.send_preflight_timeout_seconds = float(send_preflight_timeout_seconds)
         self.interval = verify_interval_seconds
         self.reasoning_effort = reasoning_effort
         self.visible_background = visible_background
@@ -814,12 +816,12 @@ class BrowserTransport:
                 await page.close()
 
     @staticmethod
-    async def _native_send_control(page):
-        """Select a unique, enabled native Send. Never guess Enter semantics.
+    async def _native_send_control(page, *, timeout_seconds: float = 25.0):
+        """Wait for a unique, enabled native Send after attachment/composer hydration.
 
-        A newly rendered ChatGPT composer may have an icon-only button
-        without accessible "Send" text. Do not treat its absence from the
-        name-based selector as evidence that Enter will submit.
+        Upload chips can finish several seconds before ChatGPT enables Send.
+        Never click a disabled control or press Enter as a fallback. This is
+        entirely pre-Send, and a timeout preserves safe retry semantics.
         """
         candidates = (
             ("role", page.get_by_role(
@@ -830,16 +832,36 @@ class BrowserTransport:
             ("aria-send", page.locator(
                 'button[aria-label="Send"],button[aria-label="Отправить"]')),
         )
-        for source, control in candidates:
-            matches = await control.count()
-            if matches != 1:
-                continue
-            candidate = control.first
-            if await candidate.is_visible() and await candidate.is_enabled():
-                return source, candidate
-        raise RuntimeError(
-            "ChatGPT native Send control unavailable before attempt; no message sent"
-        )
+        start = time.monotonic()
+        deadline = start + max(0.0, float(timeout_seconds))
+        observed_disabled = False
+        observed_visible = False
+        while True:
+            for source, control in candidates:
+                matches = await control.count()
+                if matches != 1:
+                    continue
+                candidate = control.first
+                if not await candidate.is_visible():
+                    continue
+                observed_visible = True
+                if await candidate.is_enabled():
+                    waited_ms = int((time.monotonic() - start) * 1000)
+                    if waited_ms > 500:
+                        log.info("cb35_send_ready_after_wait source=%s wait_ms=%d",
+                                 source, waited_ms)
+                    return source, candidate
+                observed_disabled = True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                log.warning(
+                    "cb35_send_not_ready waited_ms=%d visible=%s disabled=%s",
+                    int((time.monotonic() - start)*1000),
+                    observed_visible, observed_disabled)
+                raise RuntimeError(
+                    "ChatGPT native Send control unavailable before attempt; no message sent"
+                )
+            await asyncio.sleep(min(0.35, remaining))
 
     @_browser_stream
     async def generate(
@@ -1087,7 +1109,8 @@ class BrowserTransport:
             if self._rate_limit_checker() > 0:
                 raise ProviderRateLimitError("Shared provider cooldown before pressing Send")
             stage_event("native_send_preflight")
-            send_source, native_button = await self._native_send_control(page)
+            send_source, native_button = await self._native_send_control(
+                page, timeout_seconds=self.send_preflight_timeout_seconds)
             log.info("cb34_send_control request_id=%s source=%s",request_id,send_source)
             # Persist original Send intent BEFORE the first and ONLY click.
             # A crash in the tiny gap between journal and browser call must
