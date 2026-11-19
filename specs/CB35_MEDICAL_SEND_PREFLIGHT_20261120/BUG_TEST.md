@@ -1,4 +1,5 @@
 # CB35 Test — 2026-11-20
-Live no-send reproduction with original frozen #10318: four ready attachments, Send disabled at 0/2 seconds, enabled by 7 seconds; zero model requests. New test_cb35_delayed_send.py 4 cases and existing 11 native/receipt tests pass. Full suite, postrelease nonmedical smoke and actual medical/Telegram delivery pending.
+Live no-send reproduction with original frozen #10318: four ready attachments, Send disabled at 0/2 seconds, enabled by 7 seconds; zero model requests. New test_cb35_delayed_send.py 4 cases and existing 11 native/receipt tests pass. Full offline suite PASS. Beta26 installed on both Macs and authenticated /ready HTTP200. Actual medical/Telegram delivery pending safety unblock.
 
 Pre-release full regression: 338/338 ChatBridge tests, 4 subtests, Ruff all src/tests/scripts, compileall and 38 medical batch/catch-up/incident/delay tests passed. No provider or Telegram live replay before release.
+\nExact real 10318 dry-run: copied SQLite backup to memory, frozen prompt and 4 attachments preserved, single idempotent audit staging verified, live job remained failed/chunks_sent=0 with no live audit. Actual medical-only service stop/audited submit/restart tool call blocked by OpenAI safety; no duplicate or live send attempted.\n
