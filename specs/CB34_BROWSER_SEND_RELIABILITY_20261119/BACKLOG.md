@@ -5,5 +5,5 @@
 - [ ] Telegram alert for unreconciled unknown after threshold, without retransmission
 - [ ] Post-release next scheduled medical digest observation
 
-- [ ] **jkmac external dependency**: inspect existing managed Chrome profile to confirm sign-in or browser editor UI; then rerun /ready and a single nonmedical request, no auto duplicate.
+- [x] **jkmac authentication resolved**: owner logged into the existing managed Chrome profile; new single nonmedical ChatGPT request completed with source user+assistant ACK, and /ready HTTP 200.
 - [ ] **next scheduled medical cycle**: observe that fresh owner safely batches unresolved 10314/10315 after last successful report, without replaying unknown ChatBridge attempts.
