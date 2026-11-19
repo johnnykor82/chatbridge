@@ -10,8 +10,9 @@
 - [x] Stage-specific safe telemetry and error diagnostics
 - [x] Tests of disabled/icon send, no POST, delayed POST, HTTP errors, restart/no duplicates
 - [x] Full regression + source Converge, update docs/backlog after each step
-- [ ] Git commit/push, remote SHA check
-- [ ] Mac Server isolated release installation+health
-- [ ] jkmac isolated release installation+health
-- [ ] Safe end-to-end smoke excluding old uncertain medical request
-- [ ] Final Converge and release verification, update backlog and commit
+- [x] Git commit/push 1dbd288, remote SHA verified
+- [x] Mac Server beta25 release+health/auth/isolated nonmedical real completed smoke
+- [x] jkmac beta25 release+health/SHA/SQLite integrity
+- [x] Mac Server safe nonmedical full user/assistant ACK end-to-end smoke
+- [ ] jkmac authenticated smoke: blocked by /ready 503 (auth_required_or_browser_unavailable), manual profile check needed
+- [x] Final source/deployment-integrity Converge, update backlog and commit; remote-auth caveat recorded

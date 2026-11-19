@@ -7,3 +7,8 @@
 - **R7 PASS:** 334/334 ChatBridge offline tests + 4 subtests, 15/15 medical tests, Ruff all src/tests/scripts and compileall.
 - **R8 PENDING:** publish GitHub, verify source SHA/installer and both Mac launchd/health, controlled nonmedical end-to-end smoke, final Converge.
 Rollback: Mac Server verified /Users/openclaw/AgentWorkspace/artifacts/backups/chatbridge-submit-fix-macserver-20261119-103441; jkmac verified /Users/jk/AgentWorkspace/artifacts/backups/chatbridge-submit-fix-jkmac-20261119-103517. Old immutable releases remain. Source Converge **PASS**, end-to-end not yet proven.
+
+## Deployment Converge — 2026-11-19
+**Mac Server PASS**: published commit 1dbd288 and installed beta25 from immutable release, source SHA e1510e9 identical, launchd and /health OK, authenticated readiness and real isolated nonmedical ChatGPT POST+HTTP 2xx/user ID+assistant answer CB34-OK-20261119 completed. Original uncertain medical reports never re-sent.
+**jkmac INSTALL PASS**: beta25 immutable release, source SHA e1510e9 identical, launchd port8787 /health OK, persistent DB integrity_check=ok, outgoing ChatGPT HTTP 200. **AUTHENTICATED SMOKE NOT YET PASS**: official /ready and /v1/browser/verify yield 503 auth_required_or_browser_unavailable while managed Chrome CDP is connected. This is not definitive proof of logout. No automatic credentials or risky prompt sent.
+**R8 PARTIAL**: GitHub publication and both installs verified; Mac Server smoke PASS, jkmac auth browser verification blocker recorded. Do not claim full end-to-end acceptance on second machine until owner checks login and smoke passes. Code and safety requirements R1–R7 fully converged, 334 tests + 4 subtests and Ruff all pass, 15 medical tests pass. Rollback files verified as in PLAN.

@@ -5,9 +5,9 @@
 3. Fix: native icon/label Send preflight, единый click, stage diagnostics, конфигурируемые 60s receipt deadline и CDP DOM-error guard; 6 новых + P09 профильные tests прошли. **DONE, VERIFIED**.
 4. Мониторинг/диагностика: безопасные cb34_stage/receipt_deadline логи; медицинский бот уже выдаёт однократное уведомление о задержке после 12 мин, 15 regression tests прошли. **DONE, VERIFIED**.
 5. Полный regression, Analyze повторно, source Converge: 334/334 pytest + 4 subtests, Ruff, 15 medical tests. **DONE, VERIFIED for source**; live provider smoke remains stage 7.
-6. Git commit и push на GitHub, проверить удалённый SHA. **PENDING**.
-7. Установить и проверить новую версию ChatBridge на Mac Server (только `net.chatbridge.gateway.maccontrol`), затем на jkmac (только `net.chatbridge.gateway`); проверка SHA, здоровья, тестового запроса, без повторного медицинского. **PENDING**.
-8. Завершить финальный Converge, обновить CHANGELOG/docs/задачи и финальный Git commit/push при необходимости. **PENDING**.
+6. Git commit и push на GitHub, проверить удалённый SHA. **DONE VERIFIED**: 1dbd2883861fdfba0fb4513e18082c126407e93f совпадает с origin/main.
+7. Установить beta25 на Mac Server и jkmac. **DONE installed/SHA/health both**: Mac Server nonmedical smoke completed with provider user/assistant ACK; **jkmac login verification pending** (/ready и /v1/browser/verify return 503, no live send).
+8. Документировать post-deploy evidence, повторная проверка Converge и финальный Git commit/push. **DONE for source/release integrity; jkmac authenticated smoke remains blocked**.
 
 **Проверенные бэкапы / rollback:**
 - Mac Server: `/Users/openclaw/AgentWorkspace/artifacts/backups/chatbridge-submit-fix-macserver-20261119-103441`; Git bundle VERIFIED, SQLite integrity_check=ok, plist/release SHA verified.
@@ -17,3 +17,8 @@
 **Источник:** GitHub `johnnykor82/chatbridge` main synchronized to `7e57b573314350b5265edb570a79c7f8d3973ce2`; installed baseline on both `0.2.0b24-cf5b8bc2202b`.
 **Область:** только ChatBridge + согласованный клиентский мониторинг; медицинские ответы, Telegram credentials, other services unchanged.
 **Согласие:** пользователем 2026-11-19 утвержден весь план и запрошены GitHub и обновление обеих машин.
+## Production verification, 2026-11-19
+- Published GitHub `johnnykor82/chatbridge` SHA `1dbd2883861fdfba0fb4513e18082c126407e93f`, independently verified origin/main.
+- Mac Server `0.2.0b25-d8277f597c56`, launchd `net.chatbridge.gateway.maccontrol` PID 14092, port59496 /health=ok, /ready authenticated=200, browser_transport.py SHA `e1510e9ff9350dee504f09f74337be802f88830c8abecd3db1f5067fcd329a26`. One isolated nonmedical standard request `5b7f533d-c31d-4757-8f10-2981b9eaa509` verified submitting→streaming→completed, provider user and assistant IDs ACK, exact `CB34-OK-20261119` returned. No medical prompt replay.
+- jkmac `0.2.0b25-d8277f597c56`, launchd `net.chatbridge.gateway` PID 9412, port8787 /health=ok, DB integrity=ok, source SHA same. HTTPS ChatGPT=200; /ready and official /v1/browser/verify respond 503 `auth_required_or_browser_unavailable` despite managed Chrome running. Not enough evidence to assert logout; manual auth/UI check needed. No provider smoke sent on jkmac.
+- Immutable original releases preserved; tested backups Mac Server 10:34, jkmac 10:35 as recorded above; no other gateway or bot restarted.
